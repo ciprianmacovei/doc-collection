@@ -1,21 +1,20 @@
-import { StatusBar } from 'expo-status-bar';
+import 'react-native-gesture-handler';
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import Constants from 'expo-constants';
+import Router from './Routes/Router';
+import { AppRegistry } from 'react-native';
+
+import * as firebase from 'firebase';
+
+if (firebase.app.length) {
+  firebase.initializeApp(Constants.manifest.extra.firebase);
+}
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text>Open up App.js to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+      <Router/>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+AppRegistry.registerComponent('App', () => App)
+
