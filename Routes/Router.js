@@ -11,8 +11,8 @@ export default function Routes() {
 return (
   <NavigationContainer>
     <Stack.Navigator>
-      <Stack.Screen name="Login" component={Login} options={{ title: 'Login' }} />
       <Stack.Screen name="Documents" component={Documents} options={{ title: 'Documents' }}/>
+      <Stack.Screen name="Login" component={Login} options={{ title: 'Login' }} />
     </Stack.Navigator>
   </NavigationContainer>
 )
