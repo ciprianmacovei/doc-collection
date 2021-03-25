@@ -10,12 +10,12 @@ ListDocuments = () => {
 
 	useEffect(() => {
 		const getData = async () => {
-      if (once) {
-			const arrayFilesRefs = await storageRef.listAll();
-			const arrayFilesMeta = await Promise.all(arrayFilesRefs.items.map((ref) => ref.getMetadata()));
-      changeListOfFilesMetadata(arrayFilesMeta);
-      once = false;
-      }
+			if (once) {
+				const arrayFilesRefs = await storageRef.listAll();
+				const arrayFilesMeta = await Promise.all(arrayFilesRefs.items.map((ref) => ref.getMetadata()));
+				changeListOfFilesMetadata(arrayFilesMeta);
+				once = false;
+			}
 		};
 		getData();
 	});
@@ -30,11 +30,9 @@ ListDocuments = () => {
 		);
 	});
 
-  console.log(listOfFilesMetadata);
-
 	return (
 		<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-			{ items.length ? items : <Text>Loading</Text> }
+			{items.length ? items : <Text>Loading</Text>}
 		</View>
 	);
 };
