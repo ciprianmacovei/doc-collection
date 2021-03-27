@@ -6,6 +6,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 
 import * as firebase from 'firebase';
 
+
 const storageRef = firebase.storage().refFromURL('gs://doc-collection-3ed14.appspot.com/');
 
 export default class ListDocuments extends React.Component {
