@@ -1,8 +1,8 @@
 import React from "react";
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
-import CreateDocument from '../TabScreens/CreateDocument';
-import ListDocuments from '../TabScreens/ListDocuments';
+import CreateDocument from './TabScreens/CreateDocument';
+import ListDocuments from './TabScreens/ListDocuments';
 
 const Tab = createBottomTabNavigator();
 

@@ -1,24 +1,86 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import Constants from 'expo-constants';
 import { View, StyleSheet, TextInput, TouchableOpacity, Text, Platform, Button, Alert } from 'react-native';
-import * as firebase from 'firebase';
-
+import { storageRef } from '../../../firebase';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Notifications from 'expo-notifications';
 import * as DocumentPicker from 'expo-document-picker';
+
+Notifications.setNotificationHandler({
+	handleNotification: async () => ({
+		shouldShowAlert: true,
+		shouldPlaySound: false,
+		shouldSetBadge: false
+	})
+});
 
 CreateDocument = () => {
 	const [ formValid, setFormValidity ] = useState(false);
 	const [ date, setDate ] = useState(new Date());
 	const [ time, setTime ] = useState(new Date());
 	const [ filename, setFilename ] = useState(null);
+	const [ expoPushToken, setExpoPushToken ] = useState('');
+	const [ notification, setNotification ] = useState(false);
+	const notificationListener = useRef();
+	const responseListener = useRef();
+
+	useEffect(() => {
+		registerForPushNotificationsAsync().then((token) => setExpoPushToken(token));
+
+		notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
+			setNotification(notification);
+		});
+
+		responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
+			console.log(response.notification.request.content.data.data)
+		});
+
+		return () => {
+			Notifications.removeNotificationSubscription(notificationListener);
+			Notifications.removeNotificationSubscription(responseListener);
+		};
+	}, []);
 
 	const onChangeDate = (event, selectedDate) => {
-		const currentDate = selectedDate || date;
+		const currentDate = new Date(selectedDate || date);
+		const setDateOnly = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate() + 1);
+		setDateOnly.setHours(0, 0, 0);
 		setDate(currentDate);
 	};
 
 	const onChangeTime = (event, selectedDate) => {
 		const currentDate = selectedDate || time;
 		setTime(currentDate);
+	};
+
+	const registerForPushNotificationsAsync = async () => {
+		let token;
+		if (Constants.isDevice) {
+			const { status: existingStatus } = await Notifications.getPermissionsAsync();
+			let finalStatus = existingStatus;
+			if (existingStatus !== 'granted') {
+				const { status } = await Notifications.requestPermissionsAsync();
+				finalStatus = status;
+			}
+			if (finalStatus !== 'granted') {
+				alert('Failed to get push token for push notification!');
+				return;
+			}
+			token = (await Notifications.getExpoPushTokenAsync()).data;
+		} else {
+			alert('Must use physical device for Push Notifications');
+		}
+
+		if (Platform.OS === 'android') {
+			Notifications.setNotificationChannelAsync('default', {
+				name: 'default',
+				importance: Notifications.AndroidImportance.MAX,
+				vibrationPattern: [ 0, 250, 250, 250 ],
+				lightColor: '#FF231F7C'
+			});
+		}
+
+		return token;
 	};
 
 	const pickDocument = async () => {
@@ -63,7 +125,6 @@ CreateDocument = () => {
 
 	const uploadToFirebase = (blob) => {
 		return new Promise((resolve, reject) => {
-			var storageRef = firebase.storage().ref();
 			storageRef
 				.child(`${filename}`)
 				.put(blob, {
@@ -79,8 +140,27 @@ CreateDocument = () => {
 		});
 	};
 
-	const submitCreate = () => {
+	const transformDateAndTimeToSeconds = () => {
+		let selectedDateMilliseconds = new Date(date).getTime(),
+			selectedTime = new Date(time),
+			selectedTimeMilliseconds =
+				(+selectedTime.getHours() * 60 * 60 + +selectedTime.getMinutes() * 60 + +selectedTime.getSeconds()) *
+				1000;
+
+		return (selectedDateMilliseconds + selectedTimeMilliseconds - new Date().getTime()) / 1000 - 45800;
+	};
+
+	const submitCreate = async () => {
 		if (formValid) {
+			const timeTillNotify = transformDateAndTimeToSeconds();
+			await Notifications.scheduleNotificationAsync({
+				content: {
+					title: 'Notification! 📬',
+					body: `File name ${filename} will expire today`,
+					data: { data: filename }
+				},
+				trigger: { seconds: timeTillNotify }
+			});
 		}
 	};
 
