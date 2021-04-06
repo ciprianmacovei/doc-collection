@@ -14,17 +14,18 @@ Notifications.setNotificationHandler({
 	})
 });
 
-CreateDocument = () => {
-	const [ formValid, setFormValidity ] = useState(false);
-	const [ date, setDate ] = useState(new Date());
-	const [ time, setTime ] = useState(new Date());
-	const [ filename, setFilename ] = useState(null);
-	const [ expoPushToken, setExpoPushToken ] = useState('');
-	const [ notification, setNotification ] = useState(false);
+const CreateDocument = () => {
+	const [date, setDate] = useState(new Date());
+	const [formValid, setFormValidity] = useState(false);
+	const [blob, setBlob] = useState(undefined);
+	const [filename, setFilename] = useState(null);
+	const [expoPushToken, setExpoPushToken] = useState('');
+	const [notification, setNotification] = useState(false);
 	const notificationListener = useRef();
 	const responseListener = useRef();
 
 	useEffect(() => {
+
 		registerForPushNotificationsAsync().then((token) => setExpoPushToken(token));
 
 		notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
@@ -36,21 +37,14 @@ CreateDocument = () => {
 		});
 
 		return () => {
-			Notifications.removeNotificationSubscription(notificationListener);
-			Notifications.removeNotificationSubscription(responseListener);
+			Notifications.removeNotificationSubscription(notificationListener.current);
+			Notifications.removeNotificationSubscription(responseListener.current);
 		};
 	}, []);
 
 	const onChangeDate = (event, selectedDate) => {
 		const currentDate = new Date(selectedDate || date);
-		const setDateOnly = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate() + 1);
-		setDateOnly.setHours(0, 0, 0);
 		setDate(currentDate);
-	};
-
-	const onChangeTime = (event, selectedDate) => {
-		const currentDate = selectedDate || time;
-		setTime(currentDate);
 	};
 
 	const registerForPushNotificationsAsync = async () => {
@@ -63,19 +57,19 @@ CreateDocument = () => {
 				finalStatus = status;
 			}
 			if (finalStatus !== 'granted') {
-				alert('Failed to get push token for push notification!');
+				Alert.alert('Failed to get push token for push notification!');
 				return;
 			}
 			token = (await Notifications.getExpoPushTokenAsync()).data;
 		} else {
-			alert('Must use physical device for Push Notifications');
+			Alert.alert('Must use physical device for Push Notifications');
 		}
 
 		if (Platform.OS === 'android') {
 			Notifications.setNotificationChannelAsync('default', {
 				name: 'default',
 				importance: Notifications.AndroidImportance.MAX,
-				vibrationPattern: [ 0, 250, 250, 250 ],
+				vibrationPattern: [0, 250, 250, 250],
 				lightColor: '#FF231F7C'
 			});
 		}
@@ -86,21 +80,11 @@ CreateDocument = () => {
 	const pickDocument = async () => {
 		let result = await DocumentPicker.getDocumentAsync({});
 		if (result.type !== 'cancel') {
-			const blob = await uriToBlob(result.uri);
-			if (blob) {
-				uploadToFirebase(blob).then(
-					(res) => {
-						if (res) {
-							setFormValidity(true);
-						}
-					},
-					(error) => {
-						setFormValidity(false);
-						Alert(error);
-					}
-				);
+			const reqBlob = await uriToBlob(result.uri);
+			if (reqBlob) {
+				setBlob(reqBlob)
 			} else {
-				Alert('Upload error');
+				Alert.alert('Upload error');
 			}
 		}
 	};
@@ -108,12 +92,14 @@ CreateDocument = () => {
 	const uriToBlob = (uri) => {
 		return new Promise((resolve, reject) => {
 			const xhr = new XMLHttpRequest();
-			xhr.onload = function() {
+			xhr.onload = function () {
 				// return the blob
+				setFormValidity(true);
 				resolve(xhr.response);
 			};
-			xhr.onerror = function() {
+			xhr.onerror = function () {
 				// something went wrong
+				setFormValidity(false);
 				reject(new Error('uriToBlob failed'));
 			};
 			// this helps us get a blob
@@ -128,39 +114,62 @@ CreateDocument = () => {
 			storageRef
 				.child(`${filename}`)
 				.put(blob, {
-					contentType: 'application/pdf'
+					contentType: 'application/pdf',
+					customMetadata: {
+						notificationTime: date
+					}
 				})
 				.then((snapshot) => {
 					blob.close();
 					resolve(snapshot);
 				})
 				.catch((error) => {
-					reject(error);
+					throw error;
 				});
 		});
 	};
 
-	const transformDateAndTimeToSeconds = () => {
-		let selectedDateMilliseconds = new Date(date).getTime(),
-			selectedTime = new Date(time),
-			selectedTimeMilliseconds =
-				(+selectedTime.getHours() * 60 * 60 + +selectedTime.getMinutes() * 60 + +selectedTime.getSeconds()) *
-				1000;
+	const transformDateInSeconds = () => {
+		let selectedDate = new Date(date),
+			dateNow = new Date();
 
-		return (selectedDateMilliseconds + selectedTimeMilliseconds - new Date().getTime()) / 1000 - 45800;
+		selectedDate.setHours(selectedDate.getHours() + 3);
+		selectedDate = selectedDate / 1000;
+
+		dateNow.setHours(dateNow.getHours() + 3)
+		dateNow = dateNow / 1000;
+
+
+		if (selectedDate > dateNow) {
+			return selectedDate - dateNow;
+		} else {
+			Alert.alert('You have not selected a good date');
+		}
 	};
 
 	const submitCreate = async () => {
-		if (formValid) {
-			const timeTillNotify = transformDateAndTimeToSeconds();
-			await Notifications.scheduleNotificationAsync({
-				content: {
-					title: 'Notification! 📬',
-					body: `File name ${filename} will expire today`,
-					data: { data: filename }
-				},
-				trigger: { seconds: timeTillNotify }
-			});
+		if (formValid && blob) {
+			const timeTillNotify = transformDateInSeconds();
+			console.log(timeTillNotify, 'MMMMMMM');
+			if (timeTillNotify) {
+				await Notifications.scheduleNotificationAsync({
+					content: {
+						title: 'Notification! 📬',
+						body: `File name ${filename} will expire today`,
+						data: { data: filename }
+					},
+					trigger: { seconds: timeTillNotify }
+				});
+
+				await uploadToFirebase(blob)
+					.then((res) => {
+						if (res) {
+							Alert.alert('Item Created');
+						}
+					}, (error) => {
+						Alert.alert(error);
+					});
+			}
 		}
 	};
 
@@ -176,25 +185,15 @@ CreateDocument = () => {
 				<View>
 					<View style={styles.dateAndTime}>
 						<View style={styles.marginTop}>
-							<Text>Select date</Text>
+							<Text>Select date/time</Text>
 							<DateTimePicker
 								testID="dateTimePicker"
 								value={date}
-								mode="date"
+								mode="datetime"
 								is24Hour={true}
+								dateFormat="year day month"
 								display="default"
 								onChange={onChangeDate}
-							/>
-						</View>
-						<View style={styles.marginTop}>
-							<Text>Select time</Text>
-							<DateTimePicker
-								testID="dateTimePicker"
-								value={time}
-								mode="time"
-								is24Hour={true}
-								display="default"
-								onChange={onChangeTime}
 							/>
 						</View>
 						<View style={styles.marginTop}>

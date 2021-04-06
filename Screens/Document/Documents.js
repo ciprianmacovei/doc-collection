@@ -12,7 +12,7 @@ export default class Documents extends React.Component {
     return (
       <Tab.Navigator>
         <Tab.Screen name="Create" component={CreateDocument} />
-        <Tab.Screen name="List" component={ListDocuments} />
+        <Tab.Screen name="List" component={ListDocuments}/>
       </Tab.Navigator>
     )
   }

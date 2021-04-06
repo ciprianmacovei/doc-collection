@@ -8,12 +8,14 @@ import {
 	ScrollView,
 	Alert,
 	Modal,
-	TouchableHighlight
+	TouchableHighlight,
+	ActivityIndicator
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { AntDesign } from '@expo/vector-icons';
 import { MaterialIcons } from '@expo/vector-icons';
 import { storageRef } from '../../../firebase';
+
 export default class ListDocuments extends React.Component {
 
 	state = {
@@ -27,19 +29,29 @@ export default class ListDocuments extends React.Component {
 	}
 
 	componentDidMount() {
+		this.props.navigation.addListener('focus', this.focusHandler);
+	}
+
+	componentWillUnmount() {
+		this.props.navigation.removeListener('focus', this.focusHandler);
+	}
+
+	focusHandler = () => {
 		this.getData();
 	}
 
 	getData = async () => {
 		const arrayFilesRefs = await storageRef.listAll();
 		const arrayFilesMeta = await Promise.all(arrayFilesRefs.items.map((ref) => ref.getMetadata()));
-		this.setState({ listOfFilesMetadata: arrayFilesMeta });
+		if (arrayFilesMeta.length) {
+			this.setState({ listOfFilesMetadata: arrayFilesMeta });
+		}
 	};
 
 	deleteFile = (fileName) => {
 		storageRef.child(fileName).delete().then(
 			() => {
-				const copyOfListFiles = [ ...this.state.listOfFilesMetadata ].filter((file) => file.name !== fileName);
+				const copyOfListFiles = [...this.state.listOfFilesMetadata].filter((file) => file.name !== fileName);
 				this.setState({ listOfFilesMetadata: copyOfListFiles });
 			},
 			(error) => {
@@ -62,6 +74,14 @@ export default class ListDocuments extends React.Component {
 		);
 	};
 
+	loadingPdf = () => {
+		return (
+			<View style={[this.styles.containerLoading, this.styles.horizontal]}>
+				<ActivityIndicator size="small" color="black" />
+			</View>
+		)
+	}
+
 	render() {
 		const items = this.state.listOfFilesMetadata.map((item, index) => {
 			return (
@@ -83,17 +103,18 @@ export default class ListDocuments extends React.Component {
 					</View>
 					<Modal
 						animationType="slide"
-						transparent={true}
+						transparent={false}
 						visible={this.state.modalVisible}
 						onRequestClose={() => {
 							Alert.alert('Modal has been closed.');
 						}}
 					>
-						{/* <View style={this.styles.modalView}>
-              <View style={this.styles.centeredView}> */}
-						<WebView source={{ uri: this.state.modalUrl }} style={{ marginTop: 20 }} />
-						{/* </View>
-              </View> */}
+						<WebView
+							source={{ uri: this.state.modalUrl }}
+							style={{ marginTop: 20 }}
+							renderLoading={this.loadingPdf}
+							startInLoadingState={true}
+						/>
 						<TouchableHighlight
 							style={{ ...this.styles.openButton, backgroundColor: 'grey' }}
 							onPress={() => {
@@ -181,6 +202,18 @@ export default class ListDocuments extends React.Component {
 			color: 'white',
 			fontWeight: 'bold',
 			textAlign: 'center'
+		},
+
+		containerLoading: {
+			flex: 1,
+			justifyContent: "center",
+		},
+
+		horizontal: {
+			flexDirection: "row",
+			justifyContent: "space-around",
+			padding: 10
 		}
+
 	});
 }
