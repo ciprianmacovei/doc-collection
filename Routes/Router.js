@@ -8,12 +8,12 @@ import Documents from '../Screens/Document/Documents';
 const Stack = createStackNavigator();
 
 export default function Routes() {
-return (
-  <NavigationContainer>
-    <Stack.Navigator>
-      <Stack.Screen name="Login" component={Login} options={{ title: 'Login' }} />
-      <Stack.Screen name="Documents" component={Documents} options={{ title: 'Documents' }}/>
-    </Stack.Navigator>
-  </NavigationContainer>
-)
+  return (
+    <NavigationContainer>
+      <Stack.Navigator screenOptions={{headerShown: false}}>
+        <Stack.Screen name="Login" component={Login} />
+        <Stack.Screen name="Documents" component={Documents} />
+      </Stack.Navigator>
+    </NavigationContainer>
+  )
 }

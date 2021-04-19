@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import Constants from 'expo-constants';
-import { View, StyleSheet, TextInput, TouchableOpacity, Text, Platform, Button, Alert } from 'react-native';
+import { View, StyleSheet, TextInput, TouchableOpacity, Text, Platform, Button, Alert, Image } from 'react-native';
 import { storageRef } from '../../../firebase';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
@@ -14,40 +14,58 @@ Notifications.setNotificationHandler({
 	})
 });
 
-const CreateDocument = () => {
-	const [date, setDate] = useState(new Date());
-	const [formValid, setFormValidity] = useState(false);
-	const [blob, setBlob] = useState(undefined);
-	const [filename, setFilename] = useState(null);
-	const [expoPushToken, setExpoPushToken] = useState('');
-	const [notification, setNotification] = useState(false);
-	const notificationListener = useRef();
-	const responseListener = useRef();
+export default class CreateDocument extends React.Component {
 
-	useEffect(() => {
+	state = {
+		date: new Date(),
+		formValid: false,
+		blob: undefined,
+		filename: undefined,
+		expoPushToken: '',
+		notification: false,
+		notificationListener: null,
+		responseListener: null,
+		editMode: false,
+	}
 
-		registerForPushNotificationsAsync().then((token) => setExpoPushToken(token));
-
-		notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
+	componentDidMount() {
+		const notificationListener = Notifications.addNotificationReceivedListener((notification) => {
 			setNotification(notification);
 		});
-
-		responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
+		const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
 			console.log(response.notification.request.content.data.data)
 		});
+		this.props.navigation.addListener('focus', this.catchEditFile);
+		this.setState({ notificationListener, responseListener })
+	}
 
-		return () => {
-			Notifications.removeNotificationSubscription(notificationListener.current);
-			Notifications.removeNotificationSubscription(responseListener.current);
-		};
-	}, []);
+	componentWillUnmount() {
+		Notifications.removeNotificationSubscription(this.state.notificationListener);
+		Notifications.removeNotificationSubscription(this.state.responseListener);
+		this.props.navigation.removeListener('focus', this.catchEditFile);
+	}
 
-	const onChangeDate = (event, selectedDate) => {
+	catchEditFile = (item) => {
+		if (this.props.route?.params?.document) {
+			const currentDocument = { ...this.props.route?.params?.document };
+			if (currentDocument && Object.keys(currentDocument).length) {
+				this.setState({ editMode: true });
+				this.setState({ filename: currentDocument.name })
+				this.setState({ date: new Date(currentDocument.customMetadata?.notificationTime) });
+			}
+		}
+	}
+
+	backToLogin = () => {
+		this.props.navigation.navigate('Login');
+	}
+
+	onChangeDate = (event, selectedDate) => {
 		const currentDate = new Date(selectedDate || date);
-		setDate(currentDate);
+		this.setState({ date: currentDate });
 	};
 
-	const registerForPushNotificationsAsync = async () => {
+	registerForPushNotificationsAsync = async () => {
 		let token;
 		if (Constants.isDevice) {
 			const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -77,29 +95,32 @@ const CreateDocument = () => {
 		return token;
 	};
 
-	const pickDocument = async () => {
+	pickDocument = async () => {
 		let result = await DocumentPicker.getDocumentAsync({});
 		if (result.type !== 'cancel') {
-			const reqBlob = await uriToBlob(result.uri);
+			const reqBlob = await this.uriToBlob(result.uri);
 			if (reqBlob) {
-				setBlob(reqBlob)
+				this.setState({ blob: reqBlob });
 			} else {
 				Alert.alert('Upload error');
 			}
 		}
 	};
 
-	const uriToBlob = (uri) => {
+	uriToBlob = (uri) => {
+		const self = this;
 		return new Promise((resolve, reject) => {
 			const xhr = new XMLHttpRequest();
 			xhr.onload = function () {
 				// return the blob
-				setFormValidity(true);
+				// setFormValidity(true);
+				self.setState({ formValid: true });
 				resolve(xhr.response);
 			};
 			xhr.onerror = function () {
 				// something went wrong
-				setFormValidity(false);
+				// setFormValidity(false);
+				self.setState({ formValid: false });
 				reject(new Error('uriToBlob failed'));
 			};
 			// this helps us get a blob
@@ -109,14 +130,14 @@ const CreateDocument = () => {
 		});
 	};
 
-	const uploadToFirebase = (blob) => {
+	uploadToFirebase = (blob) => {
 		return new Promise((resolve, reject) => {
 			storageRef
-				.child(`${filename}`)
+				.child(`${this.state.filename}`)
 				.put(blob, {
 					contentType: 'application/pdf',
 					customMetadata: {
-						notificationTime: date
+						notificationTime: this.state.date
 					}
 				})
 				.then((snapshot) => {
@@ -129,8 +150,8 @@ const CreateDocument = () => {
 		});
 	};
 
-	const transformDateInSeconds = () => {
-		let selectedDate = new Date(date),
+	transformDateInSeconds = () => {
+		let selectedDate = new Date(this.state.date),
 			dateNow = new Date();
 
 		selectedDate.setHours(selectedDate.getHours() + 3);
@@ -147,101 +168,230 @@ const CreateDocument = () => {
 		}
 	};
 
-	const submitCreate = async () => {
-		if (formValid && blob) {
-			const timeTillNotify = transformDateInSeconds();
-			console.log(timeTillNotify, 'MMMMMMM');
+	submitCreate = async () => {
+		if (!this.state.editMode) {
+			if (this.state.formValid && this.state.blob) {
+				const timeTillNotify = this.transformDateInSeconds();
+				if (timeTillNotify) {
+					await Notifications.scheduleNotificationAsync({
+						content: {
+							title: 'Notification! 📬',
+							body: `File name ${this.state.filename} will expire today`,
+							data: { data: this.state.filename }
+						},
+						trigger: { seconds: timeTillNotify }
+					});
+
+					await this.uploadToFirebase(this.state.blob)
+						.then((res) => {
+							if (res) {
+								Alert.alert('Item Created');
+							}
+						}, (error) => {
+							Alert.alert(error);
+						});
+				}
+			}
+		} else {
+			const timeTillNotify = this.transformDateInSeconds();
 			if (timeTillNotify) {
 				await Notifications.scheduleNotificationAsync({
 					content: {
 						title: 'Notification! 📬',
-						body: `File name ${filename} will expire today`,
-						data: { data: filename }
+						body: `File name ${this.state.filename} will expire today`,
+						data: { data: this.state.filename }
 					},
 					trigger: { seconds: timeTillNotify }
 				});
 
-				await uploadToFirebase(blob)
-					.then((res) => {
-						if (res) {
-							Alert.alert('Item Created');
-						}
-					}, (error) => {
-						Alert.alert(error);
-					});
+				if (!this.state.blob) {
+					await storageRef.child(this.state.filename).getDownloadURL()
+						.then((url) => {
+							var xhr = new XMLHttpRequest();
+							xhr.responseType = 'blob';
+							xhr.onload = async (event) => {
+								var blob = xhr.response;
+								await storageRef.child(this.state.filename).delete();
+								await this.uploadToFirebase(blob)
+									.then((res) => {
+										if (res) {
+											Alert.alert('Item Saved');
+										}
+									}, (error) => {
+										Alert.alert(error);
+									});
+							};
+							xhr.open('GET', url);
+							xhr.send();
+						})
+						.catch((error) => {
+							Alert.alert(error);
+						});
+				} else {
+					await this.uploadToFirebase(this.state.blob)
+						.then((res) => {
+							if (res) {
+								Alert.alert('Item Created');
+							}
+						}, (error) => {
+							Alert.alert(error);
+						});
+				}
 			}
 		}
 	};
 
-	return (
-		<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-			<TextInput
-				placeholder="Document Name"
-				style={styles.customInputs}
-				autoCapitalize="none"
-				onChangeText={setFilename}
-			/>
-			{filename ? (
-				<View>
-					<View style={styles.dateAndTime}>
-						<View style={styles.marginTop}>
-							<Text>Select date/time</Text>
-							<DateTimePicker
-								testID="dateTimePicker"
-								value={date}
-								mode="datetime"
-								is24Hour={true}
-								dateFormat="year day month"
-								display="default"
-								onChange={onChangeDate}
-							/>
-						</View>
-						<View style={styles.marginTop}>
-							<Text>Pick File:</Text>
-							<Button title="Select document" color="red" borderColor="red" onPress={pickDocument} />
-						</View>
+	render() {
+		return (
+			<View style={{ flex: 1 }}>
+				<TouchableOpacity style={this.styles.backButton} onPress={this.backToLogin}>
+					<Image source={require('../../../assets/back.png')}></Image>
+				</TouchableOpacity>
+				<View style={this.styles.createDocumentContainer}>
+					{
+						!this.state.editMode ?
+							<Text style={this.styles.createPageDescription}>Add your documents</Text> :
+							<Text style={this.styles.createPageDescription}>Edit your documents</Text>
+					}
+					<View style={this.styles.documentNameInputContainer}>
+						<Text>Document name</Text>
+						<TextInput
+							value={this.state.filename}
+							placeholder="Document Name"
+							style={this.styles.customInputs}
+							autoCapitalize="none"
+							onChangeText={(value) => this.setState({ filename: value })}
+						/>
 					</View>
-					{formValid ? (
-						<TouchableOpacity onPress={submitCreate}>
-							<View style={styles.buttonContainer}>
-								<Text>Create Document</Text>
+					<View>
+						<View style={this.styles.dateAndTime}>
+							<View>
+								<Text>Select date/time notification</Text>
+								<DateTimePicker
+									style={{ marginTop: 10 }}
+									testID="dateTimePicker"
+									value={this.state.date}
+									mode="datetime"
+									is24Hour={true}
+									dateFormat="year day month"
+									display="default"
+									onChange={this.onChangeDate}
+								/>
 							</View>
-						</TouchableOpacity>
-					) : null}
-				</View>
-			) : null}
-		</View>
-	);
-};
+							<View style={this.styles.marginTop}>
+								<Text>Pick File:</Text>
+								<TouchableOpacity onPress={this.pickDocument}>
+									<View style={this.styles.pickButton}>
+										<Text style={{ color: 'white', fontSize: 15 }}>Select document</Text>
+										<Image style={{ marginLeft: 10 }} source={require('../../../assets/add.png')} />
+									</View>
+								</TouchableOpacity>
+							</View>
+						</View>
 
-const styles = StyleSheet.create({
-	dateAndTime: {
-		flexDirection: 'column'
-	},
+					</View>
+				</View >
+				{
+					!this.state.editMode ?
+						<View style={this.state.filename && this.state.blob ? this.styles.saveButtonContainer : this.styles.saveButtonDisabledContainer}>
+							<TouchableOpacity onPress={this.submitCreate} disabled={!(this.state.filename && this.state.blob)}>
+								<View style={this.styles.buttonContainer}>
+									<Text style={{ color: 'white', fontSize: 20 }}>Save Document</Text>
+								</View>
+							</TouchableOpacity>
+						</View> :
+						<View style={this.styles.saveButtonContainer}>
+							<TouchableOpacity onPress={this.submitCreate}>
+								<View style={this.styles.buttonContainer}>
+									<Text style={{ color: 'white', fontSize: 20 }}>Save Document</Text>
+								</View>
+							</TouchableOpacity>
+						</View>
+				}
+			</View >
+		);
 
-	customInputs: {
-		width: 200,
-		height: 30,
-		borderColor: 'black',
-		borderWidth: 2,
-		marginTop: 4,
-		borderRadius: 5
-	},
-
-	buttonContainer: {
-		marginTop: 20,
-		width: 120,
-		height: 20,
-		borderWidth: 2,
-		borderColor: 'grey',
-		justifyContent: 'center',
-		alignItems: 'center',
-		borderRadius: 5
-	},
-
-	marginTop: {
-		marginTop: 10
 	}
-});
 
-export default CreateDocument;
+	styles = StyleSheet.create({
+
+		createDocumentContainer: {
+			flex: 1,
+			justifyContent: 'flex-start',
+			alignItems: 'flex-start',
+			marginLeft: 20,
+			marginTop: 20
+		},
+
+		backButton: {
+			marginTop: 50,
+			marginLeft: 20
+		},
+
+		createPageDescription: {
+			fontWeight: '600',
+			fontSize: 25,
+			lineHeight: 33,
+			color: '#2F262E',
+		},
+
+		dateAndTime: {
+			flexDirection: 'column'
+		},
+
+		customInputs: {
+			width: 260,
+			height: 48,
+			backgroundColor: '#EBEBEF',
+			marginBottom: 30,
+			borderRadius: 20,
+			paddingLeft: 20,
+			marginTop: 10
+		},
+
+		buttonContainer: {
+			marginTop: 20,
+			width: 319,
+			height: 56,
+			borderRadius: 14,
+			backgroundColor: '#8A4C7D',
+			justifyContent: 'center',
+			alignItems: 'center',
+		},
+
+		marginTop: {
+			marginTop: 20
+		},
+
+		documentNameInputContainer: {
+			marginTop: 30
+		},
+
+		saveButtonContainer: {
+			flex: 1,
+			justifyContent: 'flex-end',
+			alignItems: 'center',
+			marginBottom: 30
+		},
+
+		saveButtonDisabledContainer: {
+			flex: 1,
+			justifyContent: 'flex-end',
+			alignItems: 'center',
+			marginBottom: 30,
+			opacity: 0.2
+		},
+
+		pickButton: {
+			marginTop: 10,
+			width: 180,
+			height: 40,
+			borderRadius: 8,
+			backgroundColor: '#8A4C7D',
+			justifyContent: 'center',
+			alignItems: 'center',
+			flexDirection: 'row'
+		}
+
+	});
+}

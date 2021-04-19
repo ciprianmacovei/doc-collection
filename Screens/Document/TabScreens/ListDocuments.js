@@ -9,19 +9,23 @@ import {
 	Alert,
 	Modal,
 	TouchableHighlight,
-	ActivityIndicator
+	ActivityIndicator,
+	Image,
+	TextInput
 } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { AntDesign } from '@expo/vector-icons';
-import { MaterialIcons } from '@expo/vector-icons';
 import { storageRef } from '../../../firebase';
+import { ConfirmDialog } from 'react-native-simple-dialogs';
 
 export default class ListDocuments extends React.Component {
 
 	state = {
 		modalVisible: false,
 		modalUrl: '',
-		listOfFilesMetadata: []
+		listOfFilesMetadata: [],
+		initialListOfFiles: [],
+		dialogVisible: false,
+		deleteFileName: undefined
 	};
 
 	constructor(props) {
@@ -43,16 +47,19 @@ export default class ListDocuments extends React.Component {
 	getData = async () => {
 		const arrayFilesRefs = await storageRef.listAll();
 		const arrayFilesMeta = await Promise.all(arrayFilesRefs.items.map((ref) => ref.getMetadata()));
+		console.log(arrayFilesMeta, '@@@@')
 		if (arrayFilesMeta.length) {
 			this.setState({ listOfFilesMetadata: arrayFilesMeta });
+			this.setState({ initialListOfFiles: arrayFilesMeta });
 		}
 	};
 
-	deleteFile = (fileName) => {
-		storageRef.child(fileName).delete().then(
+	deleteFile = () => {
+		storageRef.child(this.state.deleteFileName).delete().then(
 			() => {
-				const copyOfListFiles = [...this.state.listOfFilesMetadata].filter((file) => file.name !== fileName);
+				const copyOfListFiles = [...this.state.listOfFilesMetadata].filter((file) => file.name !== this.state.deleteFileName);
 				this.setState({ listOfFilesMetadata: copyOfListFiles });
+				this.setState({ dialogVisible: false });
 			},
 			(error) => {
 				if (error) Alert(error);
@@ -74,9 +81,25 @@ export default class ListDocuments extends React.Component {
 		);
 	};
 
+	editFile = (item) => {
+		this.props.navigation.jumpTo('Create', { document: item });
+	}
+
+	searchDocument = (value) => {
+		if (value === '') {
+			this.setState({ listOfFilesMetadata: this.state.initialListOfFiles });
+		} else {
+			let searchArray = [...this.state.listOfFilesMetadata];
+			if (searchArray.length) {
+				searchArray = searchArray.filter((x) => x.name.indexOf(value) > -1);
+				this.setState({ listOfFilesMetadata: searchArray });
+			}
+		}
+	}
+
 	loadingPdf = () => {
 		return (
-			<View style={[this.styles.containerLoading, this.styles.horizontal]}>
+			<View style={this.styles.containerLoading}>
 				<ActivityIndicator size="small" color="black" />
 			</View>
 		)
@@ -87,18 +110,28 @@ export default class ListDocuments extends React.Component {
 			return (
 				<View style={this.styles.inputContainer} key={index}>
 					<View style={this.styles.textPadding}>
-						<Text>{item.name}</Text>
-						<Text>{item.timeCreated}</Text>
-						<Text>{item.size}</Text>
+						<View style={this.styles.cardDescription}>
+							<Image style={{ marginRight: 8, width: 20, height: 20 }} source={require('../../../assets/title.png')} />
+							<Text style={this.styles.description}>{item.name}</Text>
+						</View>
+						<View style={this.styles.cardTime}>
+							<Image style={{ marginRight: 10, width: 15, height: 15 }} source={require('../../../assets/expires.png')} />
+							<Text>{new Date(item.customMetadata?.notificationTime).toLocaleString()}</Text>
+						</View>
 					</View>
 
 					<View style={this.styles.editContainer}>
-						<TouchableOpacity onPress={() => this.deleteFile(item.name)}>
-							<AntDesign name="delete" size={24} color="black" />
-						</TouchableOpacity>
-
 						<TouchableOpacity onPress={() => this.previewFile(item.name)}>
-							<MaterialIcons name="pageview" size={24} color="black" />
+							<View style={this.styles.viewDocumentButton}>
+								<Image source={require('../../../assets/edit.png')} style={{ marginRight: 8 }} />
+								<Text style={{ color: 'white' }}>View document</Text>
+							</View>
+						</TouchableOpacity>
+						<TouchableOpacity onPress={() => this.setState({ deleteFileName: item.name, dialogVisible: true })} style={{ marginLeft: 10 }}>
+							<Image source={require('../../../assets/delete.png')} />
+						</TouchableOpacity>
+						<TouchableOpacity onPress={() => this.editFile(item)} style={{ marginLeft: 10 }}>
+							<Image source={require('../../../assets/editFile.png')} />
 						</TouchableOpacity>
 					</View>
 					<Modal
@@ -124,6 +157,20 @@ export default class ListDocuments extends React.Component {
 							<Text style={this.styles.textStyle}>Hide Modal</Text>
 						</TouchableHighlight>
 					</Modal>
+					<ConfirmDialog
+						title="Confirm Dialog"
+						message={`Are you sure you want to delete ${this.state.deleteFileName} file?`}
+						visible={this.state.dialogVisible}
+						onTouchOutside={() => this.setState({ dialogVisible: false })}
+						positiveButton={{
+							title: "YES",
+							onPress: () => this.deleteFile()
+						}}
+						negativeButton={{
+							title: "NO",
+							onPress: () => this.setState({ dialogVisible: false })
+						}}
+					/>
 				</View>
 			);
 		});
@@ -131,6 +178,12 @@ export default class ListDocuments extends React.Component {
 		return (
 			<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
 				<SafeAreaView>
+					<TextInput
+						placeholder="Document Name"
+						style={this.styles.customInputs}
+						autoCapitalize="none"
+						onChangeText={this.searchDocument}
+					/>
 					<ScrollView>{items.length ? items : <Text>Loading</Text>}</ScrollView>
 				</SafeAreaView>
 			</View>
@@ -138,6 +191,47 @@ export default class ListDocuments extends React.Component {
 	}
 
 	styles = StyleSheet.create({
+
+		customInputs: {
+			width: 300,
+			height: 48,
+			backgroundColor: '#EBEBEF',
+			marginBottom: 30,
+			borderRadius: 20,
+			paddingLeft: 20,
+			marginTop: 10
+		},
+
+		viewDocumentButton: {
+			backgroundColor: "#8A4C7D",
+			width: 150,
+			height: 45,
+			justifyContent: 'center',
+			alignItems: 'center',
+			flexDirection: 'row',
+			borderRadius: 8,
+		},
+
+		cardDescription: {
+			flexDirection: 'row',
+			justifyContent: 'flex-start',
+			alignItems: 'center',
+		},
+
+		cardTime: {
+			flexDirection: 'row',
+			justifyContent: 'flex-start',
+			alignItems: 'center',
+			marginTop: 20,
+			marginBottom: 10,
+			paddingLeft: 3
+		},
+
+		description: {
+			fontSize: 17,
+			fontWeight: '600'
+		},
+
 		fullView: {
 			flex: 1,
 			justifyContent: 'center',
@@ -145,12 +239,14 @@ export default class ListDocuments extends React.Component {
 		},
 
 		inputContainer: {
-			flexDirection: 'row',
-			borderWidth: 2,
-			borderColor: 'grey',
+			flexDirection: 'column',
+			backgroundColor: '#EBEBEF',
 			justifyContent: 'center',
-			alignItems: 'center',
-			marginTop: 5
+			width: 300,
+			height: 150,
+			marginTop: 10,
+			borderRadius: 15,
+			padding: 10
 		},
 
 		textPadding: {
@@ -159,7 +255,8 @@ export default class ListDocuments extends React.Component {
 
 		editContainer: {
 			marginLeft: 10,
-			marginRight: 10
+			marginRight: 10,
+			flexDirection: 'row',
 		},
 
 		modalContainer: {
@@ -205,15 +302,11 @@ export default class ListDocuments extends React.Component {
 		},
 
 		containerLoading: {
-			flex: 1,
-			justifyContent: "center",
+			position: 'absolute',
+			top: '50%',
+			left: '50%',
+			paddingRight: 10
 		},
-
-		horizontal: {
-			flexDirection: "row",
-			justifyContent: "space-around",
-			padding: 10
-		}
-
+		
 	});
 }
