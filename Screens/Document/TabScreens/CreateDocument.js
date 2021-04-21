@@ -1,6 +1,16 @@
 import React from 'react';
 import Constants from 'expo-constants';
-import { View, StyleSheet, TextInput, TouchableOpacity, Text, Platform, Button, Alert, Image } from 'react-native';
+import {
+	View,
+	StyleSheet,
+	TextInput,
+	TouchableOpacity,
+	Text,
+	Platform,
+	Button,
+	Alert,
+	Image,
+} from 'react-native';
 import { storageRef } from '../../../firebase';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
@@ -26,6 +36,7 @@ export default class CreateDocument extends React.Component {
 		notificationListener: null,
 		responseListener: null,
 		editMode: false,
+		isAndroid: false,
 	}
 
 	componentDidMount() {
@@ -36,6 +47,7 @@ export default class CreateDocument extends React.Component {
 			console.log(response.notification.request.content.data.data)
 		});
 		this.props.navigation.addListener('focus', this.catchEditFile);
+		this.setPlatform();
 		this.setState({ notificationListener, responseListener })
 	}
 
@@ -45,8 +57,16 @@ export default class CreateDocument extends React.Component {
 		this.props.navigation.removeListener('focus', this.catchEditFile);
 	}
 
+	setPlatform = () => {
+		if (Platform.OS === 'android') {
+			this.setState({isAndroid: true});
+		} else {
+			this.setState({isAndroid: false});
+		}
+	}
+
 	catchEditFile = (item) => {
-		if (this.props.route?.params?.document) {
+		if (this.props && this.props.route && this.props.route.params && this.props.route.params.document) {
 			const currentDocument = { ...this.props.route?.params?.document };
 			if (currentDocument && Object.keys(currentDocument).length) {
 				this.setState({ editMode: true });
@@ -61,8 +81,10 @@ export default class CreateDocument extends React.Component {
 	}
 
 	onChangeDate = (event, selectedDate) => {
-		const currentDate = new Date(selectedDate || date);
-		this.setState({ date: currentDate });
+		if (selectedDate) {
+			const currentDate = new Date(selectedDate || date);
+			this.setState({ date: currentDate });
+		}
 	};
 
 	registerForPushNotificationsAsync = async () => {
@@ -267,16 +289,18 @@ export default class CreateDocument extends React.Component {
 						<View style={this.styles.dateAndTime}>
 							<View>
 								<Text>Select date/time notification</Text>
-								<DateTimePicker
-									style={{ marginTop: 10 }}
-									testID="dateTimePicker"
-									value={this.state.date}
-									mode="datetime"
-									is24Hour={true}
-									dateFormat="year day month"
-									display="default"
-									onChange={this.onChangeDate}
-								/>
+								{ this.state.isAndroid ?
+									<DateTimePicker
+										style={{ marginTop: 10 }}
+										testID="dateTimePicker"
+										value={this.state.date}
+										mode="datetime"
+										is24Hour={true}
+										dateFormat="year day month"
+										display="default"
+										onChange={this.onChangeDate}/> :
+										null
+								}
 							</View>
 							<View style={this.styles.marginTop}>
 								<Text>Pick File:</Text>

@@ -14,8 +14,8 @@ const firebaseConfig = {
 
 if (!firebase.apps.length) {
 	firebase.initializeApp(firebaseConfig);
+	firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
 }
-
 const storageRef = firebase.storage().refFromURL('gs://doc-collection-3ed14.appspot.com/');
 
 export { firebase, storageRef };
