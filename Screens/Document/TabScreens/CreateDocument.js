@@ -7,15 +7,16 @@ import {
 	TouchableOpacity,
 	Text,
 	Platform,
-	Button,
 	Alert,
 	Image,
-	Keyboard
+	Keyboard,
+	ActivityIndicator
 } from 'react-native';
 import { storageRef } from '../../../firebase';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
 import * as DocumentPicker from 'expo-document-picker';
+import Spinner from 'react-native-loading-spinner-overlay';
 
 Notifications.setNotificationHandler({
 	handleNotification : async () => ({
@@ -29,6 +30,7 @@ export default class CreateDocument extends React.Component {
 	state = {
 		date                    : new Date(),
 		formValid               : false,
+		blobPdf                 : undefined,
 		blob                    : undefined,
 		filename                : undefined,
 		expoPushToken           : '',
@@ -42,7 +44,8 @@ export default class CreateDocument extends React.Component {
 		isAndroid               : false,
 		showDateTimeOnAndroid   : false,
 		androidTime             : '',
-		androidDate             : ''
+		androidDate             : '',
+		showLoading             : false
 	};
 
 	componentDidMount() {
@@ -162,14 +165,23 @@ export default class CreateDocument extends React.Component {
 		try {
 			let result = await DocumentPicker.getDocumentAsync({});
 			if (result.type !== 'cancel') {
-				const reqBlob = await this.uriToBlob(result.uri);
-				if (reqBlob) {
-					this.setState({ blob: reqBlob });
+				let reqBlob;
+				if (result.uri.indexOf('.pdf') > -1) {
+					reqBlob = await this.uriToBlob(result.uri);
+					if (reqBlob) {
+						this.setState({ blobPdf: reqBlob });
+						console.log('pdf');
+					}
 				} else {
-					Alert.alert('Upload error');
+					reqBlob = await this.uriToBlob(result.uri);
+					if (reqBlob) {
+						this.setState({ blob: reqBlob });
+					}
 				}
+			} else {
+				Alert.alert('Upload error');
 			}
-		} catch(e) {
+		} catch (e) {
 			console.log(e);
 		}
 	};
@@ -197,12 +209,24 @@ export default class CreateDocument extends React.Component {
 		});
 	};
 
-	uploadToFirebase = (blob) => {
+	uploadToFirebase = () => {
 		return new Promise((resolve, reject) => {
+			let contentType, blob;
+
+			if (this.state.blobPdf) {
+				blob = his.state.blobPdf;
+				contentType = 'application/pdf';
+			} else if (this.state.blob) {
+				blob = this.state.blob;
+				contentType = 'image/jpeg';
+			} else {
+				Alert.alert('Unknown uploaded type');
+			}
+
 			storageRef
 				.child(`${this.state.filename}`)
 				.put(blob, {
-					contentType    : 'application/pdf',
+					contentType    : contentType,
 					customMetadata : {
 						notificationTime : this.state.date
 					}
@@ -235,6 +259,7 @@ export default class CreateDocument extends React.Component {
 	};
 
 	submitCreate = async () => {
+		this.setState({showLoading: true})
 		if (!this.state.editMode) {
 			if (this.state.formValid && this.state.blob) {
 				const timeTillNotify = this.transformDateInSeconds();
@@ -248,10 +273,12 @@ export default class CreateDocument extends React.Component {
 						trigger : { seconds: timeTillNotify }
 					});
 
-					await this.uploadToFirebase(this.state.blob).then(
+					await this.uploadToFirebase().then(
 						(res) => {
 							if (res) {
+								this.setState({showLoading: false});
 								Alert.alert('Item Created');
+
 							}
 						},
 						(error) => {
@@ -272,7 +299,7 @@ export default class CreateDocument extends React.Component {
 					trigger : { seconds: timeTillNotify }
 				});
 
-				if (!this.state.blob) {
+				if (!this.state.blob || !this.state.blobPdf) {
 					await storageRef
 						.child(this.state.filename)
 						.getDownloadURL()
@@ -282,10 +309,10 @@ export default class CreateDocument extends React.Component {
 							xhr.onload = async (event) => {
 								var blob = xhr.response;
 								await storageRef.child(this.state.filename).delete();
-								await this.uploadToFirebase(blob).then(
+								await this.uploadToFirebase().then(
 									(res) => {
 										if (res) {
-											Alert.alert('Item Saved');
+											this.setState({showLoading: false})
 										}
 									},
 									(error) => {
@@ -300,9 +327,10 @@ export default class CreateDocument extends React.Component {
 							Alert.alert(error);
 						});
 				} else {
-					await this.uploadToFirebase(this.state.blob).then(
+					await this.uploadToFirebase().then(
 						(res) => {
 							if (res) {
+								this.setState({showLoading: false})
 								Alert.alert('Item Created');
 							}
 						},
@@ -402,7 +430,7 @@ export default class CreateDocument extends React.Component {
 						{!this.state.editMode ? (
 							<View
 								style={
-									this.state.filename && this.state.blob ? (
+									this.state.filename && (this.state.blob || this.state.blobPdf) ? (
 										this.styles.saveButtonContainer
 									) : (
 										this.styles.saveButtonDisabledContainer
@@ -429,6 +457,11 @@ export default class CreateDocument extends React.Component {
 						)}
 					</View>
 				)}
+				 <Spinner
+					visible={this.state.showLoading}
+					textContent={'Adding file...'}
+					textStyle={{color: '#8A4C7D'}}
+					/>
 			</View>
 		);
 	}

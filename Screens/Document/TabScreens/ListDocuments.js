@@ -11,16 +11,18 @@ import {
 	TouchableHighlight,
 	ActivityIndicator,
 	Image,
-	TextInput
+	TextInput,
+	Platform
 } from 'react-native';
 import { WebView } from 'react-native-webview';
-import Pdf from 'react-native-pdf';
+import PDFReader from 'rn-pdf-reader-js';
 import { storageRef } from '../../../firebase';
 import { ConfirmDialog } from 'react-native-simple-dialogs';
 
 export default class ListDocuments extends React.Component {
 	state = {
 		modalVisible        : false,
+		showAndroidPdf      : false,
 		modalUrl            : '',
 		listOfFilesMetadata : [],
 		initialListOfFiles  : [],
@@ -47,7 +49,6 @@ export default class ListDocuments extends React.Component {
 	getData = async () => {
 		const arrayFilesRefs = await storageRef.listAll();
 		const arrayFilesMeta = await Promise.all(arrayFilesRefs.items.map((ref) => ref.getMetadata()));
-		console.log(arrayFilesMeta, '@@@@');
 		if (arrayFilesMeta.length) {
 			this.setState({ listOfFilesMetadata: arrayFilesMeta });
 			this.setState({ initialListOfFiles: arrayFilesMeta });
@@ -69,10 +70,15 @@ export default class ListDocuments extends React.Component {
 		);
 	};
 
-	previewFile = (fileName) => {
-		storageRef.child(fileName).getDownloadURL().then(
+	previewFile = (item) => {
+		storageRef.child(item.name).getDownloadURL().then(
 			(res) => {
 				if (res) {
+					if (Platform.OS === 'android' && (item.contentType.indexOf('pdf') > -1)) {
+						this.setState({ showAndroidPdf: true });
+					} else {
+						this.setState({ showAndroidPdf: false });
+					}
 					this.setState({ modalUrl: res });
 					this.setState({ modalVisible: true });
 				}
@@ -129,7 +135,7 @@ export default class ListDocuments extends React.Component {
 					</View>
 
 					<View style={this.styles.editContainer}>
-						<TouchableOpacity onPress={() => this.previewFile(item.name)}>
+						<TouchableOpacity onPress={() => this.previewFile(item)}>
 							<View style={this.styles.viewDocumentButton}>
 								<Image source={require('../../../assets/edit.png')} style={{ marginRight: 8 }} />
 								<Text style={{ color: 'white' }}>View document</Text>
@@ -145,53 +151,6 @@ export default class ListDocuments extends React.Component {
 							<Image source={require('../../../assets/editFile.png')} />
 						</TouchableOpacity>
 					</View>
-					<Modal
-						animationType="slide"
-						transparent={false}
-						visible={this.state.modalVisible}
-						onRequestClose={() => {
-							Alert.alert('Modal has been closed.');
-						}}
-					>
-						<Pdf
-                    		source={{uri: this.state.modalUrl}}
-						/>
-						{/* {
-							this.state.modalUrl !== '' ?
-							<WebView
-								source={{ uri: this.state.modalUrl }}
-								style={{ marginTop: 20 }}
-								renderLoading={this.loadingPdf}
-								originWhitelist={['*']}
-								javaScriptEnabled={true}
-								domStorageEnabled={true}
-								// startInLoadingState={true}
-							/> : null
-						} */}
-
-						<TouchableHighlight
-							style={{ ...this.styles.openButton, backgroundColor: 'grey' }}
-							onPress={() => {
-								this.setState({ modalVisible: false });
-							}}
-						>
-							<Text style={this.styles.textStyle}>Hide Modal</Text>
-						</TouchableHighlight>
-					</Modal>
-					<ConfirmDialog
-						title="Confirm Dialog"
-						message={`Are you sure you want to delete ${this.state.deleteFileName} file?`}
-						visible={this.state.dialogVisible}
-						onTouchOutside={() => this.setState({ dialogVisible: false })}
-						positiveButton={{
-							title   : 'YES',
-							onPress : () => this.deleteFile()
-						}}
-						negativeButton={{
-							title   : 'NO',
-							onPress : () => this.setState({ dialogVisible: false })
-						}}
-					/>
 				</View>
 			);
 		});
@@ -207,6 +166,53 @@ export default class ListDocuments extends React.Component {
 					/>
 					<ScrollView>{items.length ? items : <Text>Loading</Text>}</ScrollView>
 				</SafeAreaView>
+				<Modal
+					animationType="slide"
+					transparent={false}
+					visible={this.state.modalVisible}
+					onRequestClose={() => {
+						Alert.alert('Modal has been closed.');
+					}}
+				>
+					{this.state.showAndroidPdf ? (
+						<PDFReader
+							source={{
+								uri : this.state.modalUrl
+							}}
+						/>
+					) : (
+						<WebView
+							source={{ uri: this.state.modalUrl }}
+							style={{ marginTop: 20 }}
+							renderLoading={this.loadingPdf}
+							startInLoadingState={true}
+							bounces={false}
+						/>
+					)}
+
+					<TouchableHighlight
+						style={{ ...this.styles.openButton, backgroundColor: 'grey' }}
+						onPress={() => {
+							this.setState({ modalVisible: false });
+						}}
+					>
+						<Text style={this.styles.textStyle}>Hide Modal</Text>
+					</TouchableHighlight>
+				</Modal>
+				<ConfirmDialog
+					title="Confirm Dialog"
+					message={`Are you sure you want to delete ${this.state.deleteFileName} file?`}
+					visible={this.state.dialogVisible}
+					onTouchOutside={() => this.setState({ dialogVisible: false })}
+					positiveButton={{
+						title   : 'YES',
+						onPress : () => this.deleteFile()
+					}}
+					negativeButton={{
+						title   : 'NO',
+						onPress : () => this.setState({ dialogVisible: false })
+					}}
+				/>
 			</View>
 		);
 	}

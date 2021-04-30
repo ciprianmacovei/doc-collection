@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/Reminders-icon.png",
     "splash": {
-      "image": "./assets/Reminders-icon.png",
+      "image": "./assets/Started.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
