@@ -1,17 +1,6 @@
 import React from 'react';
 import Constants from 'expo-constants';
-import {
-	View,
-	StyleSheet,
-	TextInput,
-	TouchableOpacity,
-	Text,
-	Platform,
-	Alert,
-	Image,
-	Keyboard,
-	ActivityIndicator
-} from 'react-native';
+import { View, StyleSheet, TextInput, TouchableOpacity, Text, Platform, Alert, Image, Keyboard } from 'react-native';
 import { storageRef } from '../../../firebase';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
@@ -45,7 +34,9 @@ export default class CreateDocument extends React.Component {
 		showDateTimeOnAndroid   : false,
 		androidTime             : '',
 		androidDate             : '',
-		showLoading             : false
+		showLoading             : false,
+		editFileName            : '',
+		editFileType            : undefined
 	};
 
 	componentDidMount() {
@@ -94,10 +85,19 @@ export default class CreateDocument extends React.Component {
 		if (this.props && this.props.route && this.props.route.params && this.props.route.params.document) {
 			const currentDocument = { ...this.props.route.params.document };
 			if (currentDocument && Object.keys(currentDocument).length) {
+				console.log(currentDocument, '@@@@')
 				this.setState({ editMode: true });
+				this.setState({ editFileName: currentDocument.name });
 				this.setState({ filename: currentDocument.name });
+				this.setState({ editFileType: currentDocument.contentType });
 				this.setState({ date: new Date(currentDocument.customMetadata.notificationTime) });
 			}
+			this.props.route.params.document = null;
+		} else {
+			this.setState({ editMode: false });
+			this.setState({ editFileType: undefined});
+			this.setState({ filename: '' });
+			this.setState({ date: new Date() });
 		}
 	};
 
@@ -119,15 +119,18 @@ export default class CreateDocument extends React.Component {
 	onChangeDateAndroid = (event, selectedDate) => {
 		if (selectedDate) {
 			this.setState({ showDateTimeOnAndroid: false });
-			this.setState({ androidTime: selectedDate.toString().split('T')[1] });
+			this.setState({ androidDate: selectedDate.toISOString().split('T')[0] });
 			const concatenatedDateForAndroid = this.state.androidDate + 'T' + this.state.androidTime;
+			console.log(concatenatedDateForAndroid, 'concatenated');
 			this.setState({ date: new Date(concatenatedDateForAndroid) });
+			console.log(this.state.androidDate, 'date', selectedDate.toISOString());
 		}
 	};
 
 	onChangeTimeAndroid = (event, selectedDate) => {
 		if (selectedDate) {
-			this.setState({ androidDate: selectedDate.toString().split('T')[0] });
+			this.setState({ androidTime: selectedDate.toISOString().split('T')[1] });
+			console.log(this.state.androidTime, 'time', selectedDate.toISOString(), selectedDate);
 		}
 	};
 
@@ -176,6 +179,7 @@ export default class CreateDocument extends React.Component {
 					reqBlob = await this.uriToBlob(result.uri);
 					if (reqBlob) {
 						this.setState({ blob: reqBlob });
+						console.log('img');
 					}
 				}
 			} else {
@@ -191,14 +195,10 @@ export default class CreateDocument extends React.Component {
 		return new Promise((resolve, reject) => {
 			const xhr = new XMLHttpRequest();
 			xhr.onload = function() {
-				// return the blob
-				// setFormValidity(true);
 				self.setState({ formValid: true });
 				resolve(xhr.response);
 			};
 			xhr.onerror = function() {
-				// something went wrong
-				// setFormValidity(false);
 				self.setState({ formValid: false });
 				reject(new Error('uriToBlob failed'));
 			};
@@ -214,7 +214,7 @@ export default class CreateDocument extends React.Component {
 			let contentType, blob;
 
 			if (this.state.blobPdf) {
-				blob = his.state.blobPdf;
+				blob = this.state.blobPdf;
 				contentType = 'application/pdf';
 			} else if (this.state.blob) {
 				blob = this.state.blob;
@@ -224,7 +224,7 @@ export default class CreateDocument extends React.Component {
 			}
 
 			storageRef
-				.child(`${this.state.filename}`)
+				.child(this.state.filename)
 				.put(blob, {
 					contentType    : contentType,
 					customMetadata : {
@@ -255,42 +255,16 @@ export default class CreateDocument extends React.Component {
 			return selectedDate - dateNow;
 		} else {
 			Alert.alert('You have not selected a good date');
+			return false;
 		}
 	};
 
 	submitCreate = async () => {
-		this.setState({showLoading: true})
+		this.setState({ showLoading: true });
+		const timeTillNotify = this.transformDateInSeconds();
 		if (!this.state.editMode) {
-			if (this.state.formValid && this.state.blob) {
-				const timeTillNotify = this.transformDateInSeconds();
-				if (timeTillNotify) {
-					await Notifications.scheduleNotificationAsync({
-						content : {
-							title : 'Notification! 📬',
-							body  : `File name ${this.state.filename} will expire today`,
-							data  : { data: this.state.filename }
-						},
-						trigger : { seconds: timeTillNotify }
-					});
-
-					await this.uploadToFirebase().then(
-						(res) => {
-							if (res) {
-								this.setState({showLoading: false});
-								Alert.alert('Item Created');
-
-							}
-						},
-						(error) => {
-							Alert.alert(error);
-						}
-					);
-				}
-			}
-		} else {
-			const timeTillNotify = this.transformDateInSeconds();
-			if (timeTillNotify) {
-				await Notifications.scheduleNotificationAsync({
+			if (timeTillNotify && this.state.formValid) {
+				Notifications.scheduleNotificationAsync({
 					content : {
 						title : 'Notification! 📬',
 						body  : `File name ${this.state.filename} will expire today`,
@@ -299,46 +273,56 @@ export default class CreateDocument extends React.Component {
 					trigger : { seconds: timeTillNotify }
 				});
 
-				if (!this.state.blob || !this.state.blobPdf) {
-					await storageRef
-						.child(this.state.filename)
-						.getDownloadURL()
-						.then((url) => {
-							var xhr = new XMLHttpRequest();
-							xhr.responseType = 'blob';
-							xhr.onload = async (event) => {
-								var blob = xhr.response;
-								await storageRef.child(this.state.filename).delete();
-								await this.uploadToFirebase().then(
-									(res) => {
-										if (res) {
-											this.setState({showLoading: false})
-										}
-									},
-									(error) => {
-										Alert.alert(error);
-									}
-								);
-							};
-							xhr.open('GET', url);
-							xhr.send();
-						})
-						.catch((error) => {
-							Alert.alert(error);
-						});
-				} else {
-					await this.uploadToFirebase().then(
-						(res) => {
-							if (res) {
-								this.setState({showLoading: false})
-								Alert.alert('Item Created');
-							}
-						},
-						(error) => {
-							Alert.alert(error);
+				this.uploadToFirebase().then(
+					(res) => {
+						if (res) {
+							this.setState({ showLoading: false });
+							Alert.alert('Item Created');
 						}
-					);
+					},
+					(error) => {
+						Alert.alert(error);
+					}
+				);
+			} else {
+				this.setState({ showLoading: false });
+			}
+		} else {
+			if (timeTillNotify) {
+				Notifications.scheduleNotificationAsync({
+					content : {
+						title : 'Notification! 📬',
+						body  : `File name ${this.state.filename} will expire today`,
+						data  : { data: this.state.filename }
+					},
+					trigger : { seconds: timeTillNotify }
+				});
+
+				const url = await storageRef.child(this.state.editFileName).getDownloadURL();
+
+				if (!(this.state.blobPdf || this.state.blob)) {
+					const blob = await this.uriToBlob(url);
+					if (this.state.editFileType == 'image/jpeg') {
+						this.setState({ blob: blob });
+					} else if (this.state.editFileType == 'application/pdf') {
+						this.setState({ blobPdf: blob });
+					}
 				}
+
+				await storageRef.child(this.state.editFileName).delete();
+
+				this.uploadToFirebase().then(
+					(res) => {
+						if (res) {
+							this.setState({ showLoading: false });
+						}
+					},
+					(error) => {
+						Alert.alert(error);
+					}
+				);
+			} else {
+				this.setState({ showLoading: false });
 			}
 		}
 	};
@@ -439,7 +423,7 @@ export default class CreateDocument extends React.Component {
 							>
 								<TouchableOpacity
 									onPress={this.submitCreate}
-									disabled={!(this.state.filename && this.state.blob)}
+									disabled={!(this.state.filename && (this.state.blob || this.state.blobPdf))}
 								>
 									<View style={this.styles.buttonContainer}>
 										<Text style={{ color: 'white', fontSize: 20 }}>Save Document</Text>
@@ -457,11 +441,11 @@ export default class CreateDocument extends React.Component {
 						)}
 					</View>
 				)}
-				 <Spinner
+				<Spinner
 					visible={this.state.showLoading}
 					textContent={'Adding file...'}
-					textStyle={{color: '#8A4C7D'}}
-					/>
+					textStyle={{ color: '#8A4C7D' }}
+				/>
 			</View>
 		);
 	}

@@ -8,10 +8,10 @@ const Tab = createBottomTabNavigator();
 export default class Documents extends React.Component {
 	render() {
 		return (
-				<Tab.Navigator tabBarOptions={{lazy: true, keyboardHidesTabBar: true}}>
-					<Tab.Screen name="Create" component={CreateDocument} />
-					<Tab.Screen name="List" component={ListDocuments} />
-				</Tab.Navigator>
+			<Tab.Navigator tabBarOptions={{lazy: true, keyboardHidesTabBar: true}}>
+				<Tab.Screen name="Create" component={CreateDocument} />
+				<Tab.Screen name="List" component={ListDocuments} />
+			</Tab.Navigator>
 		);
 	}
 }
