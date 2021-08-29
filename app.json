@@ -8,7 +8,7 @@
     "splash": {
       "image": "./assets/Started.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#EADFE8"
     },
     "updates": {
       "fallbackToCacheTimeout": 0
@@ -27,12 +27,12 @@
       "googleServicesFile": "./google-services.json",
       "useNextNotificationsApi": true,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/Reminders-icon.png",
         "backgroundColor": "#FFFFFF"
       }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/Reminders-icon.png"
     }
   }
 }

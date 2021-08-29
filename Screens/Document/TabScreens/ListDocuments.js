@@ -18,6 +18,7 @@ import { WebView } from 'react-native-webview';
 import PDFReader from 'rn-pdf-reader-js';
 import { storageRef } from '../../../firebase';
 import { ConfirmDialog } from 'react-native-simple-dialogs';
+import { color } from 'react-native-reanimated';
 
 export default class ListDocuments extends React.Component {
 	state = {
@@ -27,7 +28,8 @@ export default class ListDocuments extends React.Component {
 		listOfFilesMetadata : [],
 		initialListOfFiles  : [],
 		dialogVisible       : false,
-		deleteFileName      : undefined
+		deleteFileName      : undefined,
+		noDocumentsFound    : false
 	};
 
 	constructor(props) {
@@ -44,6 +46,10 @@ export default class ListDocuments extends React.Component {
 
 	focusHandler = () => {
 		this.getData();
+		if (this.props && this.props.route && this.props.route.params && this.props.route.params.document) {
+			this.previewFile({name:this.props.route.params.document});
+			this.props.route.params.document = null;
+		}
 	};
 
 	getData = async () => {
@@ -52,6 +58,9 @@ export default class ListDocuments extends React.Component {
 		if (arrayFilesMeta.length) {
 			this.setState({ listOfFilesMetadata: arrayFilesMeta });
 			this.setState({ initialListOfFiles: arrayFilesMeta });
+			this.setState({ noDocumentsFound: false });
+		} else {
+			this.setState({ noDocumentsFound: true });
 		}
 	};
 
@@ -74,7 +83,7 @@ export default class ListDocuments extends React.Component {
 		storageRef.child(item.name).getDownloadURL().then(
 			(res) => {
 				if (res) {
-					if (Platform.OS === 'android' && (item.contentType.indexOf('pdf') > -1)) {
+					if (Platform.OS === 'android' && item.contentType.indexOf('pdf') > -1) {
 						this.setState({ showAndroidPdf: true });
 					} else {
 						this.setState({ showAndroidPdf: false });
@@ -105,6 +114,22 @@ export default class ListDocuments extends React.Component {
 		}
 	};
 
+	sortStartContract = () => {
+		let sortArrayStartContract = this.state.listOfFilesMetadata.sort((item, item2) => {
+			return new Date(item.customMetadata.dataContract.split('-')[0].trim()).getTime() -
+			new Date(item2.customMetadata.dataContract.split('-')[0].trim()).getTime();
+		});
+		this.setState({listOfFilesMetadata: sortArrayStartContract});
+	}
+
+	sortEndContract = () => {
+		let sortArrayEndContract = this.state.listOfFilesMetadata.sort((item, item2) => {
+			return new Date(item.customMetadata.dataContract.split('-')[1].trim()).getTime() -
+			new Date(item2.customMetadata.dataContract.split('-')[1].trim()).getTime();
+		});
+		this.setState({listOfFilesMetadata: sortArrayEndContract});
+	}
+
 	loadingPdf = () => {
 		return (
 			<View style={this.styles.containerLoading}>
@@ -130,7 +155,7 @@ export default class ListDocuments extends React.Component {
 								style={{ marginRight: 10, width: 15, height: 15 }}
 								source={require('../../../assets/expires.png')}
 							/>
-							<Text>{new Date(item.customMetadata.notificationTime).toLocaleString()}</Text>
+							<Text>{item.customMetadata.dataContract}</Text>
 						</View>
 					</View>
 
@@ -164,14 +189,34 @@ export default class ListDocuments extends React.Component {
 						autoCapitalize="none"
 						onChangeText={this.searchDocument}
 					/>
-					<ScrollView>{items.length ? items : <Text>Loading</Text>}</ScrollView>
+					<View style={this.styles.sortButtonContainer}>
+						<TouchableOpacity onPress={this.sortStartContract}>
+							<View style={this.styles.sortButton}>
+								<Text style={{textAlign  : 'center', color: 'white'}}>Sorteaza incepere contract</Text>
+							</View>
+						</TouchableOpacity>
+						<TouchableOpacity onPress={this.sortEndContract}>
+							<View style={this.styles.sortButton}>
+								<Text style={{textAlign  : 'center', color: 'white'}}>Sorteaza incetare contract</Text>
+							</View>
+						</TouchableOpacity>
+					</View>
+					<ScrollView>
+						{items.length ? (
+							items
+						) : !this.state.noDocumentsFound ? (
+							<Text style={this.styles.textStyleCenter}>Se incarca!</Text>
+						) : (
+							<Text style={this.styles.textStyleCenter}>Nu exista niciun document!</Text>
+						)}
+					</ScrollView>
 				</SafeAreaView>
 				<Modal
 					animationType="slide"
 					transparent={false}
 					visible={this.state.modalVisible}
 					onRequestClose={() => {
-						Alert.alert('Modal has been closed.');
+						Alert.alert('Modalul s a inchis.');
 					}}
 				>
 					{this.state.showAndroidPdf ? (
@@ -218,6 +263,21 @@ export default class ListDocuments extends React.Component {
 	}
 
 	styles = StyleSheet.create({
+		sortButtonContainer: {
+			display: 'flex',
+			justifyContent: 'center',
+			flexDirection: 'row',
+			alignItems: 'center'
+		},
+
+		sortButton: {
+			backgroundColor : '#8A4C7D',
+			width: 150,
+			height: 40,
+			borderRadius: 5,
+			marginLeft: 5,
+		},
+
 		customInputs       : {
 			width           : 300,
 			height          : 48,
@@ -318,11 +378,18 @@ export default class ListDocuments extends React.Component {
 			backgroundColor : '#F194FF',
 			borderRadius    : 20,
 			padding         : 10,
-			elevation       : 2
+			elevation       : 2,
+			justifyContent  : 'flex-end'
 		},
 
 		textStyle          : {
 			color      : 'white',
+			fontWeight : 'bold',
+			textAlign  : 'center'
+		},
+
+		textStyleCenter    : {
+			color      : 'black',
 			fontWeight : 'bold',
 			textAlign  : 'center'
 		},

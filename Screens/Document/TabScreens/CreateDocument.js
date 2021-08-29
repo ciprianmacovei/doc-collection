@@ -1,8 +1,18 @@
 import React from 'react';
 import Constants from 'expo-constants';
-import { View, StyleSheet, TextInput, TouchableOpacity, Text, Platform, Alert, Image, Keyboard } from 'react-native';
+import {
+	View,
+	StyleSheet,
+	TextInput,
+	TouchableOpacity,
+	Text,
+	Platform,
+	Alert,
+	Image,
+	Keyboard,
+	ScrollView
+} from 'react-native';
 import { storageRef } from '../../../firebase';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
 import * as DocumentPicker from 'expo-document-picker';
 import Spinner from 'react-native-loading-spinner-overlay';
@@ -18,10 +28,14 @@ Notifications.setNotificationHandler({
 export default class CreateDocument extends React.Component {
 	state = {
 		date                    : new Date(),
+		notificationDateAndTime : undefined,
+		startContract           : undefined,
+		endContract             : undefined,
 		formValid               : false,
 		blobPdf                 : undefined,
 		blob                    : undefined,
 		filename                : undefined,
+		editedFilename          : undefined,
 		expoPushToken           : '',
 		notification            : false,
 		notificationListener    : null,
@@ -35,16 +49,18 @@ export default class CreateDocument extends React.Component {
 		androidTime             : '',
 		androidDate             : '',
 		showLoading             : false,
-		editFileName            : '',
 		editFileType            : undefined
 	};
 
 	componentDidMount() {
+		const self = this;
 		const notificationListener = Notifications.addNotificationReceivedListener((notification) => {
-			setNotification(notification);
+			// setNotification(notification);
 		});
 		const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
-			console.log(response.notification.request.content.data.data);
+			// AICI tr sa faci callbackul sa te duca direct pe fisierul care expira.
+			// console.log(response.notification.request.content.data.data);
+			self.props.navigation.jumpTo('List', {document: response.notification.request.content.data.data});
 		});
 		const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () =>
 			this.setState({ keyboardOn: true })
@@ -85,53 +101,30 @@ export default class CreateDocument extends React.Component {
 		if (this.props && this.props.route && this.props.route.params && this.props.route.params.document) {
 			const currentDocument = { ...this.props.route.params.document };
 			if (currentDocument && Object.keys(currentDocument).length) {
-				console.log(currentDocument, '@@@@')
+				let startContract = currentDocument.customMetadata.dataContract.split('-')[0].trim();
+				let endContract = currentDocument.customMetadata.dataContract.split('-')[1].trim();
 				this.setState({ editMode: true });
-				this.setState({ editFileName: currentDocument.name });
 				this.setState({ filename: currentDocument.name });
+				this.setState({ editedFilename: currentDocument.name });
 				this.setState({ editFileType: currentDocument.contentType });
-				this.setState({ date: new Date(currentDocument.customMetadata.notificationTime) });
+				this.setState({ startContract });
+				this.setState({ endContract });
+				this.setState({ notificationDateAndTime: currentDocument.customMetadata.notificationDateAndTime})
 			}
 			this.props.route.params.document = null;
 		} else {
 			this.setState({ editMode: false });
-			this.setState({ editFileType: undefined});
+			this.setState({ editFileType: undefined });
 			this.setState({ filename: '' });
 			this.setState({ date: new Date() });
+			this.setState({ startContract: undefined });
+			this.setState({ endContract: undefined });
+			this.setState({ notificationDateAndTime: undefined });
 		}
-	};
-
-	showAndroidTimePicker = () => {
-		this.setState({ showDateTimeOnAndroid: !this.state.showDateTimeOnAndroid });
 	};
 
 	backToLogin = () => {
 		this.props.navigation.navigate('Login');
-	};
-
-	onChangeDate = (event, selectedDate) => {
-		if (selectedDate) {
-			const currentDate = new Date(selectedDate || date);
-			this.setState({ date: currentDate });
-		}
-	};
-
-	onChangeDateAndroid = (event, selectedDate) => {
-		if (selectedDate) {
-			this.setState({ showDateTimeOnAndroid: false });
-			this.setState({ androidDate: selectedDate.toISOString().split('T')[0] });
-			const concatenatedDateForAndroid = this.state.androidDate + 'T' + this.state.androidTime;
-			console.log(concatenatedDateForAndroid, 'concatenated');
-			this.setState({ date: new Date(concatenatedDateForAndroid) });
-			console.log(this.state.androidDate, 'date', selectedDate.toISOString());
-		}
-	};
-
-	onChangeTimeAndroid = (event, selectedDate) => {
-		if (selectedDate) {
-			this.setState({ androidTime: selectedDate.toISOString().split('T')[1] });
-			console.log(this.state.androidTime, 'time', selectedDate.toISOString(), selectedDate);
-		}
 	};
 
 	registerForPushNotificationsAsync = async () => {
@@ -183,7 +176,7 @@ export default class CreateDocument extends React.Component {
 					}
 				}
 			} else {
-				Alert.alert('Upload error');
+				Alert.alert('Nu ati selectat niciun document!');
 			}
 		} catch (e) {
 			console.log(e);
@@ -228,11 +221,12 @@ export default class CreateDocument extends React.Component {
 				.put(blob, {
 					contentType    : contentType,
 					customMetadata : {
-						notificationTime : this.state.date
+						dataContract : `${this.state.startContract} - ${this.state.endContract}`,
+						notificationDateAndTime: `${this.state.notificationDateAndTime}`
 					}
 				})
 				.then((snapshot) => {
-					blob.close();
+					this.setState({});
 					resolve(snapshot);
 				})
 				.catch((error) => {
@@ -241,20 +235,59 @@ export default class CreateDocument extends React.Component {
 		});
 	};
 
+	dateNotificationValidator = (value) => {
+		if (value !== undefined && (new Date(value).toString() === 'Invalid Date' || value.length != 16)) {
+			return false;
+		}
+		if (value !== undefined && !(Number(new Date(value).getTime()) > Number(new Date().getTime()))) {
+			return false;
+		}
+		return true;
+	};
+
+	dateContractValidator = (value) => {
+		if (value !== undefined && (new Date(value).toString() === 'Invalid Date' || value.length != 10)) {
+			return false;
+		}
+		return true;
+	};
+
+	validateAll = (editMode) => {
+		if (!editMode) {
+			return (
+				this.state.filename &&
+				(this.state.blob || this.state.blobPdf) &&
+				this.state.endContract &&
+				this.dateContractValidator(this.state.endContract) &&
+				this.state.startContract &&
+				this.dateContractValidator(this.state.startContract) &&
+				this.state.notificationDateAndTime &&
+				this.dateNotificationValidator(this.state.notificationDateAndTime)
+			);
+		}
+
+		return (
+			this.state.filename &&
+			this.state.endContract &&
+			this.dateContractValidator(this.state.endContract) &&
+			this.state.startContract &&
+			this.dateContractValidator(this.state.startContract) &&
+			this.state.notificationDateAndTime &&
+			this.dateNotificationValidator(this.state.notificationDateAndTime)
+		);
+	};
+
 	transformDateInSeconds = () => {
-		let selectedDate = new Date(this.state.date),
+		let selectedDate = new Date(this.state.notificationDateAndTime.toString()),
 			dateNow = new Date();
 
-		selectedDate.setHours(selectedDate.getHours() + 3);
-		selectedDate = selectedDate / 1000;
-
-		dateNow.setHours(dateNow.getHours() + 3);
-		dateNow = dateNow / 1000;
+		selectedDate = Math.floor(selectedDate.getTime() / 1000);
+		dateNow = Math.floor(dateNow.getTime() / 1000);
 
 		if (selectedDate > dateNow) {
 			return selectedDate - dateNow;
 		} else {
-			Alert.alert('You have not selected a good date');
+			Alert.alert('Data care ati introdus o este in trecut!');
 			return false;
 		}
 	};
@@ -266,8 +299,9 @@ export default class CreateDocument extends React.Component {
 			if (timeTillNotify && this.state.formValid) {
 				Notifications.scheduleNotificationAsync({
 					content : {
-						title : 'Notification! 📬',
-						body  : `File name ${this.state.filename} will expire today`,
+						title : 'Notificare!',
+						body  : `Documentul ${this.state.filename} va expira in curand (Incepere Contract ${this.state
+							.startContract} Sfarsit Contract ${this.state.endContract})`,
 						data  : { data: this.state.filename }
 					},
 					trigger : { seconds: timeTillNotify }
@@ -281,7 +315,8 @@ export default class CreateDocument extends React.Component {
 						}
 					},
 					(error) => {
-						Alert.alert(error);
+						Alert.alert('Error', error.message);
+						this.setState({ showLoading: false });
 					}
 				);
 			} else {
@@ -292,13 +327,14 @@ export default class CreateDocument extends React.Component {
 				Notifications.scheduleNotificationAsync({
 					content : {
 						title : 'Notification! 📬',
-						body  : `File name ${this.state.filename} will expire today`,
+						body  : `Documentul ${this.state.filename} va expira in curand (Incepere Contract ${this.state
+							.startContract} Sfarsit Contract ${this.state.endContract})`,
 						data  : { data: this.state.filename }
 					},
 					trigger : { seconds: timeTillNotify }
 				});
 
-				const url = await storageRef.child(this.state.editFileName).getDownloadURL();
+				const url = await storageRef.child(this.state.editedFilename).getDownloadURL();
 
 				if (!(this.state.blobPdf || this.state.blob)) {
 					const blob = await this.uriToBlob(url);
@@ -309,16 +345,19 @@ export default class CreateDocument extends React.Component {
 					}
 				}
 
-				await storageRef.child(this.state.editFileName).delete();
+				storageRef.child(this.state.editedFilename).delete();
 
 				this.uploadToFirebase().then(
 					(res) => {
 						if (res) {
-							this.setState({ showLoading: false });
+							if (res) {
+								this.setState({ showLoading: false });
+							}
 						}
 					},
 					(error) => {
-						Alert.alert(error);
+						Alert.alert('Error', error.message);
+						this.setState({ showLoading: false });
 					}
 				);
 			} else {
@@ -330,122 +369,131 @@ export default class CreateDocument extends React.Component {
 	render() {
 		return (
 			<View style={{ flex: 1 }}>
-				<TouchableOpacity style={this.styles.backButton} onPress={this.backToLogin}>
-					<Image source={require('../../../assets/back.png')} />
-				</TouchableOpacity>
-				<View style={this.styles.createDocumentContainer}>
-					{!this.state.editMode ? (
-						<Text style={this.styles.createPageDescription}>Add your documents</Text>
-					) : (
-						<Text style={this.styles.createPageDescription}>Edit your documents</Text>
-					)}
-					<View style={this.styles.documentNameInputContainer}>
-						<Text>Document name</Text>
-						<TextInput
-							value={this.state.filename}
-							placeholder="Document Name"
-							style={this.styles.customInputs}
-							autoCapitalize="none"
-							onChangeText={(value) => this.setState({ filename: value })}
-						/>
-					</View>
-					<View>
-						<View style={this.styles.dateAndTime}>
-							<View>
-								<Text>Select date/time notification</Text>
-								{!this.state.isAndroid ? (
-									<DateTimePicker
-										style={{ marginTop: 10 }}
-										testID="dateTimePickerIOS"
-										value={this.state.date}
-										mode="datetime"
-										is24Hour={true}
-										dateFormat="year day month"
-										display="default"
-										onChange={this.onChangeDate}
+				<ScrollView>
+					<View style={this.styles.createDocumentContainer}>
+						{!this.state.editMode ? (
+							<Text style={this.styles.createPageDescription}>Adauga documentul tau</Text>
+						) : (
+							<Text style={this.styles.createPageDescription}>Editeaza documentul</Text>
+						)}
+						<View style={this.styles.documentNameInputContainer}>
+							<Text style={this.styles.infoTextStyle}>Nume document</Text>
+							<TextInput
+								value={this.state.filename}
+								onChangeText={(value) => this.setState({ filename: value })}
+								placeholder="Nume document"
+								style={this.styles.customInputs}
+								autoCapitalize="none"
+							/>
+						</View>
+						<View>
+							<View style={this.styles.dateAndTime}>
+								<View>
+									<Text style={this.styles.infoTextStyle}>
+										Seteaza data si ora la care vreti sa apara notificarea
+									</Text>
+									<TextInput
+										value={this.state.notificationDateAndTime}
+										onChangeText={(value) => this.setState({ notificationDateAndTime: value })}
+										style={
+											this.dateNotificationValidator(this.state.notificationDateAndTime) ? (
+												this.styles.customInputs
+											) : (
+												this.styles.customInputsDanger
+											)
+										}
+										autoCapitalize="none"
+										placeholder="Data de forma: luna/zi/an ora:minut"
 									/>
-								) : (
-									<TouchableOpacity onPress={this.showAndroidTimePicker}>
-										<View style={this.styles.selectAndroidDateButton}>
-											<Text style={{ color: 'white' }}>Select date</Text>
+									{!this.dateNotificationValidator(this.state.notificationDateAndTime) ? (
+										<Text style={this.styles.textDanger}>Data inserata este invalida</Text>
+									) : null}
+								</View>
+								<View style={this.styles.marginBottom}>
+									<Text style={this.styles.infoTextStyle}>Alege documentul din telefon</Text>
+									<TouchableOpacity onPress={this.pickDocument}>
+										<View style={this.styles.pickButton}>
+											<Text style={{ color: 'white', fontSize: 13 }}>Selecteaza document</Text>
+											<Image
+												style={{ marginLeft: 10 }}
+												source={require('../../../assets/add.png')}
+											/>
 										</View>
 									</TouchableOpacity>
-								)}
-								{this.state.showDateTimeOnAndroid ? (
+								</View>
+								<View>
 									<View>
-										<DateTimePicker
-											style={{ marginTop: 10 }}
-											testID="dateTimePickerANDROID"
-											value={this.state.date}
-											mode="date"
-											is24Hour={true}
-											dateFormat="year day month"
-											display="default"
-											onChange={this.onChangeDateAndroid}
-											on
+										<Text style={this.styles.infoTextStyle}>Incepere Contract: luna/zi/an</Text>
+										<TextInput
+											value={this.state.startContract}
+											onChangeText={(value) => this.setState({ startContract: value })}
+											style={
+												this.dateContractValidator(this.state.startContract) ? (
+													this.styles.customInputs
+												) : (
+													this.styles.customInputsDanger
+												)
+											}
+											autoCapitalize="none"
+											placeholder="Data de forma: luna/zi/an"
 										/>
-										<DateTimePicker
-											style={{ marginTop: 10 }}
-											testID="dateTimePickerANDROID"
-											value={this.state.date}
-											mode="time"
-											is24Hour={true}
-											dateFormat="year day month"
-											display="default"
-											onChange={this.onChangeTimeAndroid}
+										{!this.dateContractValidator(this.state.startContract) ? (
+											<Text style={this.styles.textDanger}>Data inserata este invalida</Text>
+										) : null}
+									</View>
+									<View>
+										<Text style={this.styles.infoTextStyle}>Incetare Contract: luna/zi/an</Text>
+										<TextInput
+											value={this.state.endContract}
+											onChangeText={(value) => this.setState({ endContract: value })}
+											style={
+												this.dateContractValidator(this.state.endContract) ? (
+													this.styles.customInputs
+												) : (
+													this.styles.customInputsDanger
+												)
+											}
+											autoCapitalize="none"
+											placeholder="Data de forma: luna/zi/an"
 										/>
+										{!this.dateContractValidator(this.state.endContract) ? (
+											<Text style={this.styles.textDanger}>Data inserata este invalida</Text>
+										) : null}
 									</View>
-								) : null}
-							</View>
-							<View style={this.styles.marginTop}>
-								<Text>Pick File:</Text>
-								<TouchableOpacity onPress={this.pickDocument}>
-									<View style={this.styles.pickButton}>
-										<Text style={{ color: 'white', fontSize: 15 }}>Select document</Text>
-										<Image style={{ marginLeft: 10 }} source={require('../../../assets/add.png')} />
-									</View>
-								</TouchableOpacity>
+								</View>
 							</View>
 						</View>
 					</View>
-				</View>
-				{this.state.keyboardOn ? null : (
-					<View style={{ flex: 1 }}>
-						{!this.state.editMode ? (
-							<View
-								style={
-									this.state.filename && (this.state.blob || this.state.blobPdf) ? (
-										this.styles.saveButtonContainer
-									) : (
-										this.styles.saveButtonDisabledContainer
-									)
-								}
-							>
-								<TouchableOpacity
-									onPress={this.submitCreate}
-									disabled={!(this.state.filename && (this.state.blob || this.state.blobPdf))}
+					{this.state.keyboardOn ? null : (
+						<View style={{ flex: 1 }}>
+								<View
+									style={
+										this.validateAll(this.state.editMode) ? (
+											this.styles.saveButtonContainer
+										) : (
+											this.styles.saveButtonDisabledContainer
+										)
+									}
 								>
-									<View style={this.styles.buttonContainer}>
-										<Text style={{ color: 'white', fontSize: 20 }}>Save Document</Text>
-									</View>
-								</TouchableOpacity>
-							</View>
-						) : (
-							<View style={this.styles.saveButtonContainer}>
-								<TouchableOpacity onPress={this.submitCreate}>
-									<View style={this.styles.buttonContainer}>
-										<Text style={{ color: 'white', fontSize: 20 }}>Save Document</Text>
-									</View>
-								</TouchableOpacity>
-							</View>
-						)}
-					</View>
-				)}
-				<Spinner
-					visible={this.state.showLoading}
-					textContent={'Adding file...'}
-					textStyle={{ color: '#8A4C7D' }}
-				/>
+									<TouchableOpacity
+										onPress={this.submitCreate}
+										disabled={!this.validateAll(this.state.editMode)}
+									>
+										<View style={this.styles.buttonContainer}>
+											<Text style={{ color: 'white', fontSize: 20 }}>
+												{ this.state.editMode ? 'Editeaza Document' : 'Creaza Document' }
+										</Text>
+										</View>
+									</TouchableOpacity>
+								</View>
+						</View>
+					)}
+					<Spinner
+						visible={this.state.showLoading}
+						textContent={this.state.editMode ? 'Actualizeaza document...' : 'Adauga document...'}
+						textStyle={{ color: '#8A4C7D' }}
+					/>
+				</ScrollView>
 			</View>
 		);
 	}
@@ -456,7 +504,7 @@ export default class CreateDocument extends React.Component {
 			justifyContent : 'flex-start',
 			alignItems     : 'flex-start',
 			marginLeft     : 20,
-			marginTop      : 20
+			marginTop      : 60
 		},
 
 		backButton                  : {
@@ -479,10 +527,27 @@ export default class CreateDocument extends React.Component {
 			width           : 260,
 			height          : 48,
 			backgroundColor : '#EBEBEF',
-			marginBottom    : 30,
+			marginBottom    : 10,
 			borderRadius    : 20,
 			paddingLeft     : 20,
 			marginTop       : 10
+		},
+
+		customInputsDanger          : {
+			width           : 260,
+			height          : 48,
+			backgroundColor : '#EBEBEF',
+			marginBottom    : 10,
+			borderRadius    : 20,
+			paddingLeft     : 20,
+			marginTop       : 10,
+			borderColor     : 'red',
+			borderWidth     : 2
+		},
+
+		textDanger                  : {
+			color        : 'red',
+			marginBottom : 10
 		},
 
 		buttonContainer             : {
@@ -495,8 +560,8 @@ export default class CreateDocument extends React.Component {
 			alignItems      : 'center'
 		},
 
-		marginTop                   : {
-			marginTop : 20
+		marginBottom                : {
+			marginBottom : 25
 		},
 
 		documentNameInputContainer  : {
@@ -537,6 +602,11 @@ export default class CreateDocument extends React.Component {
 			height          : 25,
 			borderRadius    : 5,
 			marginTop       : 5
+		},
+
+		infoTextStyle               : {
+			fontSize   : 14,
+			fontWeight : '600'
 		}
 	});
 }
