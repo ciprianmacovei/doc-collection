@@ -17,39 +17,40 @@ import * as Notifications from 'expo-notifications';
 import * as DocumentPicker from 'expo-document-picker';
 import Spinner from 'react-native-loading-spinner-overlay';
 
+
 Notifications.setNotificationHandler({
-	handleNotification : async () => ({
-		shouldShowAlert : true,
-		shouldPlaySound : false,
-		shouldSetBadge  : false
+	handleNotification: async () => ({
+		shouldShowAlert: true,
+		shouldPlaySound: false,
+		shouldSetBadge: false
 	})
 });
 
 export default class CreateDocument extends React.Component {
 	state = {
-		date                    : new Date(),
-		notificationDateAndTime : undefined,
-		startContract           : undefined,
-		endContract             : undefined,
-		formValid               : false,
-		blobPdf                 : undefined,
-		blob                    : undefined,
-		filename                : undefined,
-		editedFilename          : undefined,
-		expoPushToken           : '',
-		notification            : false,
-		notificationListener    : null,
-		responseListener        : null,
-		keyboardDidShowListener : null,
-		keyboardDidHideListener : null,
-		keyboardOn              : false,
-		editMode                : false,
-		isAndroid               : false,
-		showDateTimeOnAndroid   : false,
-		androidTime             : '',
-		androidDate             : '',
-		showLoading             : false,
-		editFileType            : undefined
+		date: new Date(),
+		notificationDateAndTime: undefined,
+		startContract: undefined,
+		endContract: undefined,
+		formValid: false,
+		blobPdf: undefined,
+		blob: undefined,
+		filename: undefined,
+		editedFilename: undefined,
+		expoPushToken: '',
+		notification: false,
+		notificationListener: null,
+		responseListener: null,
+		keyboardDidShowListener: null,
+		keyboardDidHideListener: null,
+		keyboardOn: false,
+		editMode: false,
+		isAndroid: false,
+		showDateTimeOnAndroid: false,
+		androidTime: '',
+		androidDate: '',
+		showLoading: false,
+		editFileType: undefined
 	};
 
 	componentDidMount() {
@@ -59,8 +60,13 @@ export default class CreateDocument extends React.Component {
 		});
 		const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
 			// AICI tr sa faci callbackul sa te duca direct pe fisierul care expira.
-			// console.log(response.notification.request.content.data.data);
-			self.props.navigation.jumpTo('List', {document: response.notification.request.content.data.data});
+			self.props.navigation.jumpTo('Create');
+			self.props.navigation.jumpTo('List',
+				{
+					document: response.notification.request.content.data.data,
+					isPdf: response.notification.request.content.data.isPdf
+				}
+			);
 		});
 		const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () =>
 			this.setState({ keyboardOn: true })
@@ -109,7 +115,7 @@ export default class CreateDocument extends React.Component {
 				this.setState({ editFileType: currentDocument.contentType });
 				this.setState({ startContract });
 				this.setState({ endContract });
-				this.setState({ notificationDateAndTime: currentDocument.customMetadata.notificationDateAndTime})
+				this.setState({ notificationDateAndTime: currentDocument.customMetadata.notificationDateAndTime })
 			}
 			this.props.route.params.document = null;
 		} else {
@@ -147,10 +153,10 @@ export default class CreateDocument extends React.Component {
 
 		if (Platform.OS === 'android') {
 			Notifications.setNotificationChannelAsync('default', {
-				name             : 'default',
-				importance       : Notifications.AndroidImportance.MAX,
-				vibrationPattern : [ 0, 250, 250, 250 ],
-				lightColor       : '#FF231F7C'
+				name: 'default',
+				importance: Notifications.AndroidImportance.MAX,
+				vibrationPattern: [0, 250, 250, 250],
+				lightColor: '#FF231F7C'
 			});
 		}
 
@@ -187,11 +193,11 @@ export default class CreateDocument extends React.Component {
 		const self = this;
 		return new Promise((resolve, reject) => {
 			const xhr = new XMLHttpRequest();
-			xhr.onload = function() {
+			xhr.onload = function () {
 				self.setState({ formValid: true });
 				resolve(xhr.response);
 			};
-			xhr.onerror = function() {
+			xhr.onerror = function () {
 				self.setState({ formValid: false });
 				reject(new Error('uriToBlob failed'));
 			};
@@ -219,9 +225,9 @@ export default class CreateDocument extends React.Component {
 			storageRef
 				.child(this.state.filename)
 				.put(blob, {
-					contentType    : contentType,
-					customMetadata : {
-						dataContract : `${this.state.startContract} - ${this.state.endContract}`,
+					contentType: contentType,
+					customMetadata: {
+						dataContract: `${this.state.startContract} - ${this.state.endContract}`,
 						notificationDateAndTime: `${this.state.notificationDateAndTime}`
 					}
 				})
@@ -277,6 +283,18 @@ export default class CreateDocument extends React.Component {
 		);
 	};
 
+	createDocumentOnEdit = () => {
+		this.setState({ editMode: false });
+		this.setState({ editFileType: undefined });
+		this.setState({ filename: '' });
+		this.setState({ blobPdf: undefined });
+		this.setState({ blob: undefined });
+		this.setState({ date: new Date() });
+		this.setState({ startContract: undefined });
+		this.setState({ endContract: undefined });
+		this.setState({ notificationDateAndTime: undefined });
+	}
+
 	transformDateInSeconds = () => {
 		let selectedDate = new Date(this.state.notificationDateAndTime.toString()),
 			dateNow = new Date();
@@ -298,13 +316,16 @@ export default class CreateDocument extends React.Component {
 		if (!this.state.editMode) {
 			if (timeTillNotify && this.state.formValid) {
 				Notifications.scheduleNotificationAsync({
-					content : {
-						title : 'Notificare!',
-						body  : `Documentul ${this.state.filename} va expira in curand (Incepere Contract ${this.state
+					content: {
+						title: 'Notificare!',
+						body: `Documentul ${this.state.filename} va expira in curand (Incepere Contract ${this.state
 							.startContract} Sfarsit Contract ${this.state.endContract})`,
-						data  : { data: this.state.filename }
+						data: {
+							data: this.state.filename,
+							isPdf: !!this.state.blobPdf
+						}
 					},
-					trigger : { seconds: timeTillNotify }
+					trigger: { seconds: timeTillNotify }
 				});
 
 				this.uploadToFirebase().then(
@@ -324,15 +345,6 @@ export default class CreateDocument extends React.Component {
 			}
 		} else {
 			if (timeTillNotify) {
-				Notifications.scheduleNotificationAsync({
-					content : {
-						title : 'Notification! 📬',
-						body  : `Documentul ${this.state.filename} va expira in curand (Incepere Contract ${this.state
-							.startContract} Sfarsit Contract ${this.state.endContract})`,
-						data  : { data: this.state.filename }
-					},
-					trigger : { seconds: timeTillNotify }
-				});
 
 				const url = await storageRef.child(this.state.editedFilename).getDownloadURL();
 
@@ -346,6 +358,26 @@ export default class CreateDocument extends React.Component {
 				}
 
 				storageRef.child(this.state.editedFilename).delete();
+
+				Notifications.getAllScheduledNotificationsAsync()
+					.then((res) => {
+						let createdNotification = res.find((identifier) => identifier.content.data.data === this.state.filename);
+						if (createdNotification) {
+							Notifications.cancelScheduledNotificationAsync(createdNotification.identifier);
+						}
+						Notifications.scheduleNotificationAsync({
+							content: {
+								title: 'Notification! 📬',
+								body: `Documentul ${this.state.filename} va expira in curand (Incepere Contract ${this.state
+									.startContract} Sfarsit Contract ${this.state.endContract})`,
+								data: {
+									data: this.state.filename,
+									isPdf: !!this.state.blobPdf
+								}
+							},
+							trigger: { seconds: timeTillNotify }
+						});
+					});
 
 				this.uploadToFirebase().then(
 					(res) => {
@@ -374,7 +406,15 @@ export default class CreateDocument extends React.Component {
 						{!this.state.editMode ? (
 							<Text style={this.styles.createPageDescription}>Adauga documentul tau</Text>
 						) : (
-							<Text style={this.styles.createPageDescription}>Editeaza documentul</Text>
+							<View>
+								<Text style={this.styles.createPageDescription}>Editeaza documentul</Text>
+								<TouchableOpacity
+									onPress={() => this.createDocumentOnEdit()}
+									style={this.styles.createDocumentOnEditStyle}
+								>
+									<Text style={{ color: 'white' }}>Creaza document</Text>
+								</TouchableOpacity>
+							</View>
 						)}
 						<View style={this.styles.documentNameInputContainer}>
 							<Text style={this.styles.infoTextStyle}>Nume document</Text>
@@ -466,26 +506,26 @@ export default class CreateDocument extends React.Component {
 					</View>
 					{this.state.keyboardOn ? null : (
 						<View style={{ flex: 1 }}>
-								<View
-									style={
-										this.validateAll(this.state.editMode) ? (
-											this.styles.saveButtonContainer
-										) : (
-											this.styles.saveButtonDisabledContainer
-										)
-									}
+							<View
+								style={
+									this.validateAll(this.state.editMode) ? (
+										this.styles.saveButtonContainer
+									) : (
+										this.styles.saveButtonDisabledContainer
+									)
+								}
+							>
+								<TouchableOpacity
+									onPress={this.submitCreate}
+									disabled={!this.validateAll(this.state.editMode)}
 								>
-									<TouchableOpacity
-										onPress={this.submitCreate}
-										disabled={!this.validateAll(this.state.editMode)}
-									>
-										<View style={this.styles.buttonContainer}>
-											<Text style={{ color: 'white', fontSize: 20 }}>
-												{ this.state.editMode ? 'Editeaza Document' : 'Creaza Document' }
+									<View style={this.styles.buttonContainer}>
+										<Text style={{ color: 'white', fontSize: 20 }}>
+											{this.state.editMode ? 'Editeaza Document' : 'Creaza Document'}
 										</Text>
-										</View>
-									</TouchableOpacity>
-								</View>
+									</View>
+								</TouchableOpacity>
+							</View>
 						</View>
 					)}
 					<Spinner
@@ -499,114 +539,122 @@ export default class CreateDocument extends React.Component {
 	}
 
 	styles = StyleSheet.create({
-		createDocumentContainer     : {
-			flex           : 1,
-			justifyContent : 'flex-start',
-			alignItems     : 'flex-start',
-			marginLeft     : 20,
-			marginTop      : 60
+		createDocumentOnEditStyle: {
+			width: 140,
+			height: 30,
+			backgroundColor: '#8A4C7D',
+			borderRadius: 5,
+			justifyContent: 'center',
+			alignItems: 'center',
+		},
+		createDocumentContainer: {
+			flex: 1,
+			justifyContent: 'flex-start',
+			alignItems: 'flex-start',
+			marginLeft: 20,
+			marginTop: 60
 		},
 
-		backButton                  : {
-			marginTop  : 50,
-			marginLeft : 20
+		backButton: {
+			marginTop: 50,
+			marginLeft: 20
 		},
 
-		createPageDescription       : {
-			fontWeight : '600',
-			fontSize   : 25,
-			lineHeight : 33,
-			color      : '#2F262E'
+		createPageDescription: {
+			fontWeight: '600',
+			fontSize: 25,
+			lineHeight: 33,
+			color: '#2F262E'
 		},
 
-		dateAndTime                 : {
-			flexDirection : 'column'
+		dateAndTime: {
+			flexDirection: 'column'
 		},
 
-		customInputs                : {
-			width           : 260,
-			height          : 48,
-			backgroundColor : '#EBEBEF',
-			marginBottom    : 10,
-			borderRadius    : 20,
-			paddingLeft     : 20,
-			marginTop       : 10
+		customInputs: {
+			width: 260,
+			height: 48,
+			backgroundColor: '#EBEBEF',
+			marginBottom: 10,
+			borderRadius: 20,
+			paddingLeft: 20,
+			marginTop: 10
 		},
 
-		customInputsDanger          : {
-			width           : 260,
-			height          : 48,
-			backgroundColor : '#EBEBEF',
-			marginBottom    : 10,
-			borderRadius    : 20,
-			paddingLeft     : 20,
-			marginTop       : 10,
-			borderColor     : 'red',
-			borderWidth     : 2
+		customInputsDanger: {
+			width: 260,
+			height: 48,
+			backgroundColor: '#EBEBEF',
+			marginBottom: 10,
+			borderRadius: 20,
+			paddingLeft: 20,
+			marginTop: 10,
+			borderColor: 'red',
+			borderWidth: 2
 		},
 
-		textDanger                  : {
-			color        : 'red',
-			marginBottom : 10
+		textDanger: {
+			color: 'red',
+			marginBottom: 10
 		},
 
-		buttonContainer             : {
-			marginTop       : 20,
-			width           : 319,
-			height          : 56,
-			borderRadius    : 14,
-			backgroundColor : '#8A4C7D',
-			justifyContent  : 'center',
-			alignItems      : 'center'
+		buttonContainer: {
+			marginTop: 20,
+			width: 319,
+			height: 56,
+			borderRadius: 14,
+			backgroundColor: '#8A4C7D',
+			justifyContent: 'center',
+			alignItems: 'center'
 		},
 
-		marginBottom                : {
-			marginBottom : 25
+		marginBottom: {
+			marginBottom: 25
 		},
 
-		documentNameInputContainer  : {
-			marginTop : 30
+		documentNameInputContainer: {
+			marginTop: 30
 		},
 
-		saveButtonContainer         : {
-			flex           : 1,
-			justifyContent : 'flex-end',
-			alignItems     : 'center',
-			marginBottom   : 30
+		saveButtonContainer: {
+			flex: 1,
+			justifyContent: 'flex-end',
+			alignItems: 'center',
+			marginBottom: 30
 		},
 
-		saveButtonDisabledContainer : {
-			flex           : 1,
-			justifyContent : 'flex-end',
-			alignItems     : 'center',
-			marginBottom   : 30,
-			opacity        : 0.2
+		saveButtonDisabledContainer: {
+			flex: 1,
+			justifyContent: 'flex-end',
+			alignItems: 'center',
+			marginBottom: 30,
+			opacity: 0.2
 		},
 
-		pickButton                  : {
-			marginTop       : 10,
-			width           : 180,
-			height          : 40,
-			borderRadius    : 8,
-			backgroundColor : '#8A4C7D',
-			justifyContent  : 'center',
-			alignItems      : 'center',
-			flexDirection   : 'row'
+		pickButton: {
+			marginTop: 10,
+			width: 180,
+			height: 40,
+			borderRadius: 8,
+			backgroundColor: '#8A4C7D',
+			justifyContent: 'center',
+			alignItems: 'center',
+			flexDirection: 'row'
 		},
 
-		selectAndroidDateButton     : {
-			backgroundColor : '#8A4C7D',
-			justifyContent  : 'center',
-			alignItems      : 'center',
-			width           : 120,
-			height          : 25,
-			borderRadius    : 5,
-			marginTop       : 5
+		selectAndroidDateButton: {
+			backgroundColor: '#8A4C7D',
+			justifyContent: 'center',
+			alignItems: 'center',
+			width: 120,
+			height: 25,
+			borderRadius: 5,
+			marginTop: 5
 		},
 
-		infoTextStyle               : {
-			fontSize   : 14,
-			fontWeight : '600'
+		infoTextStyle: {
+			fontSize: 14,
+			fontWeight: '600'
 		}
 	});
 }

@@ -5,6 +5,9 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/Reminders-icon.png",
+    "notification": {
+      "icon": "./assets/Reminders-icon.png"
+    },
     "splash": {
       "image": "./assets/Started.png",
       "resizeMode": "contain",

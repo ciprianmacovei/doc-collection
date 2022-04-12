@@ -22,14 +22,14 @@ import { color } from 'react-native-reanimated';
 
 export default class ListDocuments extends React.Component {
 	state = {
-		modalVisible        : false,
-		showAndroidPdf      : false,
-		modalUrl            : '',
-		listOfFilesMetadata : [],
-		initialListOfFiles  : [],
-		dialogVisible       : false,
-		deleteFileName      : undefined,
-		noDocumentsFound    : false
+		modalVisible: false,
+		showAndroidPdf: false,
+		modalUrl: '',
+		listOfFilesMetadata: [],
+		initialListOfFiles: [],
+		dialogVisible: false,
+		deleteFileName: undefined,
+		noDocumentsFound: false
 	};
 
 	constructor(props) {
@@ -47,8 +47,12 @@ export default class ListDocuments extends React.Component {
 	focusHandler = () => {
 		this.getData();
 		if (this.props && this.props.route && this.props.route.params && this.props.route.params.document) {
-			this.previewFile({name:this.props.route.params.document});
-			this.props.route.params.document = null;
+			let contentType = '';
+			if (this.props.route.params.isPdf) {
+				contentType = 'pdf';
+			}
+			this.previewFile({ name: this.props.route.params.document, contentType });
+			delete this.props.route.params.document;
 		}
 	};
 
@@ -67,7 +71,7 @@ export default class ListDocuments extends React.Component {
 	deleteFile = () => {
 		storageRef.child(this.state.deleteFileName).delete().then(
 			() => {
-				const copyOfListFiles = [ ...this.state.listOfFilesMetadata ].filter(
+				const copyOfListFiles = [...this.state.listOfFilesMetadata].filter(
 					(file) => file.name !== this.state.deleteFileName
 				);
 				this.setState({ listOfFilesMetadata: copyOfListFiles });
@@ -83,6 +87,7 @@ export default class ListDocuments extends React.Component {
 		storageRef.child(item.name).getDownloadURL().then(
 			(res) => {
 				if (res) {
+					console.log(item, '@@@@');
 					if (Platform.OS === 'android' && item.contentType.indexOf('pdf') > -1) {
 						this.setState({ showAndroidPdf: true });
 					} else {
@@ -106,7 +111,7 @@ export default class ListDocuments extends React.Component {
 		if (value === '') {
 			this.setState({ listOfFilesMetadata: this.state.initialListOfFiles });
 		} else {
-			let searchArray = [ ...this.state.listOfFilesMetadata ];
+			let searchArray = [...this.state.listOfFilesMetadata];
 			if (searchArray.length) {
 				searchArray = searchArray.filter((x) => x.name.indexOf(value) > -1);
 				this.setState({ listOfFilesMetadata: searchArray });
@@ -117,17 +122,17 @@ export default class ListDocuments extends React.Component {
 	sortStartContract = () => {
 		let sortArrayStartContract = this.state.listOfFilesMetadata.sort((item, item2) => {
 			return new Date(item.customMetadata.dataContract.split('-')[0].trim()).getTime() -
-			new Date(item2.customMetadata.dataContract.split('-')[0].trim()).getTime();
+				new Date(item2.customMetadata.dataContract.split('-')[0].trim()).getTime();
 		});
-		this.setState({listOfFilesMetadata: sortArrayStartContract});
+		this.setState({ listOfFilesMetadata: sortArrayStartContract });
 	}
 
 	sortEndContract = () => {
 		let sortArrayEndContract = this.state.listOfFilesMetadata.sort((item, item2) => {
 			return new Date(item.customMetadata.dataContract.split('-')[1].trim()).getTime() -
-			new Date(item2.customMetadata.dataContract.split('-')[1].trim()).getTime();
+				new Date(item2.customMetadata.dataContract.split('-')[1].trim()).getTime();
 		});
-		this.setState({listOfFilesMetadata: sortArrayEndContract});
+		this.setState({ listOfFilesMetadata: sortArrayEndContract });
 	}
 
 	loadingPdf = () => {
@@ -192,12 +197,12 @@ export default class ListDocuments extends React.Component {
 					<View style={this.styles.sortButtonContainer}>
 						<TouchableOpacity onPress={this.sortStartContract}>
 							<View style={this.styles.sortButton}>
-								<Text style={{textAlign  : 'center', color: 'white'}}>Sorteaza incepere contract</Text>
+								<Text style={{ textAlign: 'center', color: 'white' }}>Sorteaza incepere contract</Text>
 							</View>
 						</TouchableOpacity>
 						<TouchableOpacity onPress={this.sortEndContract}>
 							<View style={this.styles.sortButton}>
-								<Text style={{textAlign  : 'center', color: 'white'}}>Sorteaza incetare contract</Text>
+								<Text style={{ textAlign: 'center', color: 'white' }}>Sorteaza incetare contract</Text>
 							</View>
 						</TouchableOpacity>
 					</View>
@@ -222,7 +227,7 @@ export default class ListDocuments extends React.Component {
 					{this.state.showAndroidPdf ? (
 						<PDFReader
 							source={{
-								uri : this.state.modalUrl
+								uri: this.state.modalUrl
 							}}
 						/>
 					) : (
@@ -250,12 +255,12 @@ export default class ListDocuments extends React.Component {
 					visible={this.state.dialogVisible}
 					onTouchOutside={() => this.setState({ dialogVisible: false })}
 					positiveButton={{
-						title   : 'YES',
-						onPress : () => this.deleteFile()
+						title: 'YES',
+						onPress: () => this.deleteFile()
 					}}
 					negativeButton={{
-						title   : 'NO',
-						onPress : () => this.setState({ dialogVisible: false })
+						title: 'NO',
+						onPress: () => this.setState({ dialogVisible: false })
 					}}
 				/>
 			</View>
@@ -271,134 +276,134 @@ export default class ListDocuments extends React.Component {
 		},
 
 		sortButton: {
-			backgroundColor : '#8A4C7D',
+			backgroundColor: '#8A4C7D',
 			width: 150,
 			height: 40,
 			borderRadius: 5,
 			marginLeft: 5,
 		},
 
-		customInputs       : {
-			width           : 300,
-			height          : 48,
-			backgroundColor : '#EBEBEF',
-			marginBottom    : 30,
-			borderRadius    : 20,
-			paddingLeft     : 20,
-			marginTop       : 10
+		customInputs: {
+			width: 300,
+			height: 48,
+			backgroundColor: '#EBEBEF',
+			marginBottom: 30,
+			borderRadius: 20,
+			paddingLeft: 20,
+			marginTop: 10
 		},
 
-		viewDocumentButton : {
-			backgroundColor : '#8A4C7D',
-			width           : 150,
-			height          : 45,
-			justifyContent  : 'center',
-			alignItems      : 'center',
-			flexDirection   : 'row',
-			borderRadius    : 8
+		viewDocumentButton: {
+			backgroundColor: '#8A4C7D',
+			width: 150,
+			height: 45,
+			justifyContent: 'center',
+			alignItems: 'center',
+			flexDirection: 'row',
+			borderRadius: 8
 		},
 
-		cardDescription    : {
-			flexDirection  : 'row',
-			justifyContent : 'flex-start',
-			alignItems     : 'center'
+		cardDescription: {
+			flexDirection: 'row',
+			justifyContent: 'flex-start',
+			alignItems: 'center'
 		},
 
-		cardTime           : {
-			flexDirection  : 'row',
-			justifyContent : 'flex-start',
-			alignItems     : 'center',
-			marginTop      : 20,
-			marginBottom   : 10,
-			paddingLeft    : 3
+		cardTime: {
+			flexDirection: 'row',
+			justifyContent: 'flex-start',
+			alignItems: 'center',
+			marginTop: 20,
+			marginBottom: 10,
+			paddingLeft: 3
 		},
 
-		description        : {
-			fontSize   : 17,
-			fontWeight : '600'
+		description: {
+			fontSize: 17,
+			fontWeight: '600'
 		},
 
-		fullView           : {
-			flex           : 1,
-			justifyContent : 'center',
-			alignItems     : 'center'
+		fullView: {
+			flex: 1,
+			justifyContent: 'center',
+			alignItems: 'center'
 		},
 
-		inputContainer     : {
-			flexDirection   : 'column',
-			backgroundColor : '#EBEBEF',
-			justifyContent  : 'center',
-			width           : 300,
-			height          : 150,
-			marginTop       : 10,
-			borderRadius    : 15,
-			padding         : 10
+		inputContainer: {
+			flexDirection: 'column',
+			backgroundColor: '#EBEBEF',
+			justifyContent: 'center',
+			width: 300,
+			height: 150,
+			marginTop: 10,
+			borderRadius: 15,
+			padding: 10
 		},
 
-		textPadding        : {
-			padding : 5
+		textPadding: {
+			padding: 5
 		},
 
-		editContainer      : {
-			marginLeft    : 10,
-			marginRight   : 10,
-			flexDirection : 'row'
+		editContainer: {
+			marginLeft: 10,
+			marginRight: 10,
+			flexDirection: 'row'
 		},
 
-		modalContainer     : {
-			flex           : 1,
-			justifyContent : 'center',
-			alignItems     : 'center'
+		modalContainer: {
+			flex: 1,
+			justifyContent: 'center',
+			alignItems: 'center'
 		},
 
-		centeredView       : {
-			flex           : 1,
-			justifyContent : 'center',
-			alignItems     : 'center',
-			marginTop      : 22
+		centeredView: {
+			flex: 1,
+			justifyContent: 'center',
+			alignItems: 'center',
+			marginTop: 22
 		},
 
-		modalView          : {
-			margin          : 20,
-			backgroundColor : 'white',
-			borderRadius    : 20,
-			padding         : 35,
-			alignItems      : 'center',
-			shadowColor     : '#000',
-			shadowOffset    : {
-				width  : 0,
-				height : 2
+		modalView: {
+			margin: 20,
+			backgroundColor: 'white',
+			borderRadius: 20,
+			padding: 35,
+			alignItems: 'center',
+			shadowColor: '#000',
+			shadowOffset: {
+				width: 0,
+				height: 2
 			},
-			shadowOpacity   : 0.25,
-			shadowRadius    : 3.84,
-			elevation       : 5
+			shadowOpacity: 0.25,
+			shadowRadius: 3.84,
+			elevation: 5
 		},
 
-		openButton         : {
-			backgroundColor : '#F194FF',
-			borderRadius    : 20,
-			padding         : 10,
-			elevation       : 2,
-			justifyContent  : 'flex-end'
+		openButton: {
+			backgroundColor: '#F194FF',
+			borderRadius: 20,
+			padding: 10,
+			elevation: 2,
+			justifyContent: 'flex-end'
 		},
 
-		textStyle          : {
-			color      : 'white',
-			fontWeight : 'bold',
-			textAlign  : 'center'
+		textStyle: {
+			color: 'white',
+			fontWeight: 'bold',
+			textAlign: 'center'
 		},
 
-		textStyleCenter    : {
-			color      : 'black',
-			fontWeight : 'bold',
-			textAlign  : 'center'
+		textStyleCenter: {
+			color: 'black',
+			fontWeight: 'bold',
+			textAlign: 'center'
 		},
 
-		containerLoading   : {
-			position     : 'absolute',
-			top          : '50%',
-			left         : '50%',
-			paddingRight : 10
+		containerLoading: {
+			position: 'absolute',
+			top: '50%',
+			left: '50%',
+			paddingRight: 10
 		}
 	});
 }
